@@ -23,6 +23,7 @@ It is designed to stand out from monolithic agent frameworks in three ways:
 
 ## 📅 News
 
+- **2026-05-31:** Added feature-conditioned Naive Bayes as the default Skill belief backend while keeping Beta-Bernoulli as an optional compatibility backend.
 - **2026-05-09:** Released Bayesian-Agent v0.4 as a standalone cross-harness Bayesian Skill Evolution package with schemas, CLI utilities, and experiment artifacts.
 - **2026-05-09:** Added the optional GenericAgent adapter boundary without copying or vendoring GenericAgent.
 - **2026-05-09:** Published bilingual project documentation and the Bayesian-Agent framework diagram.
@@ -86,29 +87,31 @@ After each verified trajectory, the framework updates a posterior belief over th
 
 ### What "Bayesian" Means in v0.x
 
-Current Bayesian-Agent v0.x uses a **Beta-Bernoulli Bayesian update** to maintain a posterior belief over each Skill/SOP's success probability. It does not yet perform full Bayesian model selection over competing Skill hypotheses.
+Current Bayesian-Agent v0.x defaults to a **feature-conditioned Naive Bayes update** for each Skill/SOP. It estimates whether a Skill will succeed under observed evidence features such as task context, failure mode, token bucket, turn bucket, latency bucket, and selected metadata.
 
-For a Skill hypothesis `h_k`, define:
+For a Skill hypothesis `h_k`, evidence `D_k = {(x_i, y_i)}` contains discrete features `x_i` and verified labels `y_i in {success, failure}`:
 
 ```text
-p_k = P(y = 1 | h_k, context)
-y_i ~ Bernoulli(p_k)
-p_k ~ Beta(alpha_0, beta_0)
+P(y | h_k) = (N_y + alpha) / (N + alpha * |Y|)
+P(x_j = v | y, h_k) = (N_{j,v,y} + alpha) / (N_{j,y} + alpha * |V_j|)
+P(y = success | h_k, x) ∝ P(y = success | h_k) * Π_j P(x_j | y = success, h_k)
 ```
 
-After observing `s_k` verified successes and `f_k` verified failures:
+The implementation uses Laplace smoothing with `alpha = 1`. This is Bayesian in the posterior-belief sense: verified experience updates the probability of a Skill succeeding under a particular context and runtime signature. It does not yet perform full Bayesian model selection over competing Skill hypotheses.
+
+For compatibility and ablation, the original **Beta-Bernoulli** posterior is still available via `algorithm="beta_bernoulli"` or `bayesian-agent evolve --algorithm beta_bernoulli`:
 
 ```text
 p_k | D_k ~ Beta(alpha_0 + s_k, beta_0 + f_k)
 E[p_k | D_k] = (alpha_0 + s_k) / (alpha_0 + beta_0 + s_k + f_k)
 ```
 
-The implementation uses `alpha_0 = beta_0 = 1`, then uses the posterior mean to rank Skills, render posterior-weighted context, and trigger rewrite actions such as `patch`, `split`, `compress`, `retire`, and `explore`.
+Both backends feed the same Skill ranking, posterior-weighted context rendering, and rewrite actions such as `patch`, `split`, `compress`, `retire`, and `explore`.
 
 ## 📋 Core Features
 
 - **Evidence-weighted Skill evolution**: update Skill beliefs from verified success and failure trajectories.
-- **Bayesian Skill registry**: maintain Beta posteriors, failure modes, token cost, latency, turns, and context distribution.
+- **Bayesian Skill registry**: maintain Naive Bayes context-conditioned beliefs, optional Beta-Bernoulli posteriors, failure modes, token cost, latency, turns, and context distribution.
 - **Failure-mode-aware repair**: identify recurring errors and generate focused repair plans.
 - **Token-aware context building**: inject only the Skills with useful posterior evidence.
 - **Full self-evolution from scratch**: run all tasks, collect evidence online, and evolve Skills without prior traces.
@@ -148,7 +151,8 @@ The implementation uses `alpha_0 = beta_0 = 1`, then uses the posterior mean to 
 
 For each Skill or benchmark SOP, Bayesian-Agent maintains:
 
-- a Beta posterior over success probability
+- a Naive Bayes belief state over success and failure conditioned on evidence features
+- an optional Beta-Bernoulli posterior over global success probability
 - verified success and failure evidence
 - failure mode counts
 - input, output, and total token statistics
@@ -382,7 +386,7 @@ tests/                  # Standard-library unittest suite
 - [ ] Add richer rewrite policies and adapter examples.
 - [ ] Add adapters for more agent harnesses after the GenericAgent boundary stabilizes.
 - [ ] Release our own Agent harness for Bayesian-Agent; current experiments use GenericAgent as the backend harness.
-- [ ] Upgrade beyond per-Skill Beta-Bernoulli updates toward richer Bayesian reasoning, including Skill hypothesis inference, context-aware Bayesian structure such as Bayesian Networks, uncertainty-aware Skill selection, Bayesian decision policies, and online adaptation.
+- [ ] Move beyond per-Skill Naive Bayes and Beta-Bernoulli updates toward richer Bayesian reasoning, including Skill hypothesis inference, Bayesian Networks for context/failure structure, uncertainty-aware Skill selection, Bayesian decision policies, and online adaptation.
 
 
 ## 📈 Star History

@@ -32,23 +32,25 @@ The same Skill may work in one context and fail in another. That is why Bayesian
 
 ## Current Bayesian Assumption
 
-Bayesian-Agent v0.x models each Skill/SOP independently with a Beta-Bernoulli posterior:
+Bayesian-Agent v0.x models each Skill/SOP independently. The default backend is a feature-conditioned Naive Bayes posterior over verified success/failure labels:
 
 ```text
-p_k = P(success | h_k, context)
-p_k ~ Beta(alpha_0, beta_0)
-y_i ~ Bernoulli(p_k)
+D_k = {(x_i, y_i)}
+P(y | h_k) = (N_y + alpha) / (N + alpha * |Y|)
+P(x_j = v | y, h_k) = (N_{j,v,y} + alpha) / (N_{j,y} + alpha * |V_j|)
+P(success | h_k, x) ∝ P(success | h_k) * Π_j P(x_j | success, h_k)
 ```
 
-After `s_k` verified successes and `f_k` verified failures:
+`x_i` includes context, failure mode, token bucket, turn bucket, latency bucket, and simple metadata features. The implementation uses `alpha = 1` Laplace smoothing.
+
+The earlier Beta-Bernoulli backend remains available as an optional global success-rate model:
 
 ```text
 p_k | D_k ~ Beta(alpha_0 + s_k, beta_0 + f_k)
 posterior_success = E[p_k | D_k]
-                  = (alpha_0 + s_k) / (alpha_0 + beta_0 + s_k + f_k)
 ```
 
-This is a lightweight conjugate Bayesian update. It should not be confused with a full Bayesian model-selection layer over multiple competing Skill hypotheses:
+Both are lightweight Bayesian updates. They should not be confused with a full Bayesian model-selection layer over multiple competing Skill hypotheses:
 
 ```text
 P(h_k | D) ∝ P(D | h_k) P(h_k)
@@ -83,12 +85,11 @@ Evidence should come from a benchmark grader, test suite, deterministic checker,
 
 ## Posterior Belief
 
-Each Skill uses a Beta posterior:
+Each Skill stores the selected belief algorithm and its posterior state:
 
 ```text
-success: alpha += 1
-failure: beta += 1
-posterior_success = alpha / (alpha + beta)
+algorithm = naive_bayes        # default, context-conditioned
+algorithm = beta_bernoulli     # optional, global success rate
 ```
 
 The registry also tracks mean token cost, failure modes, and context counts.
@@ -106,3 +107,5 @@ The default policy maps posterior state to small, inspectable actions:
 | dominant failures | `retire` |
 
 These actions are recommendations. External harnesses decide how to rewrite, rerun, or retire Skills.
+
+The bundled SOP-Bench and Lifelong runners implement one concrete `patch` behavior: known failure modes are converted into short failure-mode-specific guardrails in the next prompt. This keeps the current v0.x implementation honest: it patches the inference context for the same Skill belief, rather than silently creating a separate child Skill hypothesis.

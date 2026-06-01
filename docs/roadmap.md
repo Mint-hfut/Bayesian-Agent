@@ -27,19 +27,13 @@ The roadmap is organized around the project's main advantage: Bayesian-Agent sho
 
 ## Bayesian Algorithm Direction
 
-The current v0.x implementation uses per-Skill Beta-Bernoulli posterior updates:
-
-```text
-p_k | D_k ~ Beta(alpha_0 + s_k, beta_0 + f_k)
-```
+The current v0.x implementation defaults to per-Skill Naive Bayes belief updates and keeps Beta-Bernoulli as an optional compatibility backend.
 
 Future releases will move toward broader Bayesian reasoning:
 
-- **Richer Skill hypothesis inference**: compare, combine, and specialize competing Skill/SOP hypotheses with posterior evidence.
-- **Context-aware Bayesian structure**: model relationships among tasks, contexts, tools, failure modes, and Skills, including Bayesian Networks.
-- **Uncertainty-aware Skill selection**: use posterior uncertainty to balance exploration, exploitation, and repair cost.
-- **Bayesian decision policies**: choose rewrite, rerun, retire, or transfer actions by expected utility over accuracy, token cost, latency, and risk.
-- **Online adaptation**: detect distribution shift and update Skill beliefs continuously as harnesses, models, and tasks change.
+- **Skill hypothesis inference**: compare, combine, and specialize competing Skill/SOP hypotheses with posterior evidence.
+- **Bayesian Networks and graphical structure**: model dependencies among tasks, contexts, tools, failure modes, and Skills.
+- **Uncertainty-aware online decisions**: choose selection, rewrite, rerun, retire, and transfer actions under uncertainty as harnesses, models, and tasks change.
 
 ## Non-Goals for v0.4
 

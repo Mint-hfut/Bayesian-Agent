@@ -14,24 +14,24 @@ The framework does not train the base model and does not require replacing the a
 
 ## Bayesian Formulation in v0.x
 
-The current implementation uses a Beta-Bernoulli Bayesian update for each Skill/SOP. It is Bayesian in the posterior-belief sense, but it is not yet a full Bayesian model-selection system over competing Skill hypotheses.
+The current default implementation uses a feature-conditioned Naive Bayes update for each Skill/SOP. It is Bayesian in the posterior-belief sense: verified trajectories update the probability that a Skill will succeed under an observed context and runtime signature. It is not yet a full Bayesian model-selection system over competing Skill hypotheses.
 
-For Skill hypothesis `h_k`, let:
+For Skill hypothesis `h_k`, let `D_k = {(x_i, y_i)}` be verified evidence. `y_i` is either `success` or `failure`, and `x_i` contains discrete evidence features such as context, failure mode, token bucket, turn bucket, latency bucket, and selected metadata:
 
 ```text
-p_k = P(y = 1 | h_k, c)
-y_i ~ Bernoulli(p_k)
-p_k ~ Beta(alpha_0, beta_0)
+P(y | h_k) = (N_y + alpha) / (N + alpha * |Y|)
+P(x_j = v | y, h_k) = (N_{j,v,y} + alpha) / (N_{j,y} + alpha * |V_j|)
+P(y | h_k, x) ∝ P(y | h_k) * Π_j P(x_j | y, h_k)
 ```
 
-where `y_i = 1` means a verified success and `c` is the task context. Given evidence `D_k` with `s_k` successes and `f_k` failures:
+Bayesian-Agent v0.x uses `alpha = 1` Laplace smoothing. The resulting `P(success | h_k, x)` is used for Skill ranking, context rendering, and rewrite policy decisions.
+
+The original Beta-Bernoulli backend is still available for compatibility and ablation:
 
 ```text
 p_k | D_k ~ Beta(alpha_0 + s_k, beta_0 + f_k)
 E[p_k | D_k] = (alpha_0 + s_k) / (alpha_0 + beta_0 + s_k + f_k)
 ```
-
-Bayesian-Agent v0.x uses `alpha_0 = beta_0 = 1`. The posterior mean is used for Skill ranking, context rendering, and rewrite policy decisions.
 
 The general Bayesian model-selection form we plan to add later is:
 
@@ -58,13 +58,14 @@ Evidence should be action-verified. For example, a benchmark grader, unit test, 
 
 ## Belief Update
 
-Each Skill uses a Beta posterior:
+Each Skill stores a selected belief backend:
 
 ```text
-success: alpha_i += 1
-failure: beta_i += 1
-E[p_i] = alpha_i / (alpha_i + beta_i)
+algorithm = naive_bayes        # default
+algorithm = beta_bernoulli     # optional compatibility backend
 ```
+
+For Naive Bayes, each verified event increments the class count and each extracted feature value count for the observed label. For Beta-Bernoulli, each verified success increments `alpha` and each verified failure increments `beta`.
 
 The registry also tracks cost, context distribution, and failure modes. These statistics guide what gets injected into future context.
 
@@ -79,6 +80,8 @@ The default policy maps posterior state to actions:
 - `explore`: evidence is still sparse or uncertain
 
 The policy is intentionally small in v0.4. It is designed to be replaced by project-specific policies.
+
+For the built-in SOP-Bench and Lifelong AgentBench runners, `patch` is not only a label in the rendered context. Observed benchmark failure modes are mapped to concrete patch rules and injected into the next prompt under `Bayesian Failure-Mode Patches`. For example, `left_expected_output_blank` adds a CSV writeback verification rule, and `invented_unrequested_column` adds SQL column-use constraints. v0.x records post-patch evidence back to the same benchmark Skill; later releases may split recurring patches into separate child Skill hypotheses.
 
 ## Full Mode
 

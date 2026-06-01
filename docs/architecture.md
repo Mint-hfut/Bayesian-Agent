@@ -66,7 +66,7 @@ This separation is what prevents Bayesian-Agent from being swallowed by the agen
 `BayesianSkillRegistry` persists beliefs as JSON:
 
 ```python
-registry = BayesianSkillRegistry("temp/beliefs.json")
+registry = BayesianSkillRegistry("temp/beliefs.json", algorithm="naive_bayes")
 registry.record(event)
 registry.save()
 ```
@@ -76,6 +76,8 @@ The registry can also run in memory:
 ```python
 registry = BayesianSkillRegistry.in_memory()
 ```
+
+Use `algorithm="beta_bernoulli"` for the optional legacy global success-rate posterior.
 
 ## Context Rendering
 

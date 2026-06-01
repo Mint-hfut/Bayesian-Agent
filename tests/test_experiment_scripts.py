@@ -3,7 +3,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from bayesian_agent.benchmarks.sop_lifelong import compact_baseline_run, incremental_task_filter
+from bayesian_agent.benchmarks.sop_lifelong import compact_baseline_run, incremental_task_filter, prepare_belief_store
+from bayesian_agent.core.evidence import TrajectoryEvidence
 from experiments.run_sop_lifelong import build_run_plan, load_env_file
 
 
@@ -28,6 +29,16 @@ class SopLifelongExperimentTests(unittest.TestCase):
         )
 
         self.assertEqual(compacted, {"task_id": "sop_01", "success": True})
+
+    def test_bayesian_full_starts_from_empty_belief_store(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_root = Path(td)
+            registry = prepare_belief_store(out_root, "bayesian-full")
+            registry.record(TrajectoryEvidence(task_id="old", skill_id="benchmark/sop_bench", context="sop_bench", outcome="success"))
+
+            reset = prepare_belief_store(out_root, "bayesian-full")
+
+            self.assertEqual(reset.beliefs(), [])
 
     def test_load_env_file_uses_standard_library(self):
         old_value = os.environ.pop("BAYESIAN_AGENT_TEST_ENV", None)

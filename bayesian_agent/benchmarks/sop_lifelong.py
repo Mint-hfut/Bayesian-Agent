@@ -49,7 +49,7 @@ def run_sop_lifelong(
     mode = mode.replace("_", "-")
     bayesian_enabled = mode in {"bayesian-full", "bayesian-incremental"}
     out_root.mkdir(parents=True, exist_ok=True)
-    registry = BayesianSkillRegistry(out_root / "bayesian_skill_beliefs.json")
+    registry = prepare_belief_store(out_root, mode)
 
     baseline_results = load_results_from_paths(baseline_paths or [], selected) if mode == "bayesian-incremental" else {}
     only_failed = failed_task_ids(baseline_results) if baseline_results else {}
@@ -109,6 +109,14 @@ def run_sop_lifelong(
     return payload
 
 
+def prepare_belief_store(out_root: Path, mode: str) -> BayesianSkillRegistry:
+    mode = mode.replace("_", "-")
+    belief_path = Path(out_root) / "bayesian_skill_beliefs.json"
+    if mode == "bayesian-full" and belief_path.exists():
+        belief_path.unlink()
+    return BayesianSkillRegistry(belief_path)
+
+
 def run_sop_bench(
     adapter,
     *,
@@ -139,7 +147,14 @@ def run_sop_bench(
         run = adapter.run_task(prompt=prompt, workspace=workspace, max_turns=max_turns)
         got = read_sop_answer(workspace, idx)
         expected = row["expected_output"].strip()
-        result = {**run, "task_id": f"sop_{idx:02d}", "expected": expected, "got": got, "success": got == expected}
+        result = {
+            **run,
+            "task_id": f"sop_{idx:02d}",
+            "expected": expected,
+            "got": got,
+            "success": got == expected,
+            "output_contract": "csv_expected_output",
+        }
         result["failure_mode"] = classify_failure("sop_bench", result)
         results.append(result)
         if bayesian_enabled:
@@ -193,6 +208,7 @@ def run_lifelong_bench(
             "got_sql": got_sql,
             "success": success,
             "error": error,
+            "output_contract": "single_sql_statement",
         }
         result["failure_mode"] = classify_failure("lifelong_agentbench", result)
         results.append(result)

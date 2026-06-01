@@ -176,7 +176,8 @@ class AgentAdapter(Protocol):
 v0.4 已经包含：
 
 - Bayesian Skill registry
-- Beta posterior belief update
+- Naive Bayes context-conditioned belief update
+- optional Beta-Bernoulli posterior backend
 - failure-mode-aware rewrite policy
 - posterior-weighted context builder
 - incremental repair utilities

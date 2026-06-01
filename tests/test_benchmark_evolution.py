@@ -26,6 +26,26 @@ class BenchmarkEvolutionTests(unittest.TestCase):
         self.assertIn("rows[row_index - 1]", context)
         self.assertIn("raw category string", context)
 
+    def test_failure_mode_patch_rules_are_rendered_from_evidence(self):
+        registry = BayesianSkillRegistry.in_memory()
+        for idx in range(2):
+            registry.record(
+                TrajectoryEvidence(
+                    task_id=f"sop_{idx}",
+                    skill_id="benchmark/sop_bench",
+                    context="sop_bench",
+                    outcome="failure",
+                    failure_mode="left_expected_output_blank",
+                    total_tokens=100,
+                )
+            )
+
+        context = build_benchmark_skill_context("sop_bench", registry)
+
+        self.assertIn("Bayesian Failure-Mode Patches", context)
+        self.assertIn("failure_mode=left_expected_output_blank observed=2", context)
+        self.assertIn("confirm the target row's `expected_output` is non-empty", context)
+
     def test_classify_lifelong_transcript_failure(self):
         failure = classify_failure("lifelong_agentbench", {"success": False, "got_sql": "Turn 1 🛠️ tool output"})
 

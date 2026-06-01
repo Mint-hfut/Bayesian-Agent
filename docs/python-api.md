@@ -25,7 +25,7 @@ event = TrajectoryEvidence(
 ```python
 from bayesian_agent import BayesianSkillRegistry
 
-registry = BayesianSkillRegistry("temp/beliefs.json")
+registry = BayesianSkillRegistry("temp/beliefs.json", algorithm="naive_bayes")
 belief = registry.record(event)
 
 print(belief.success_probability)
@@ -37,6 +37,12 @@ Use an in-memory registry for tests:
 registry = BayesianSkillRegistry.in_memory()
 ```
 
+Use the Beta-Bernoulli compatibility backend when you want a global success-rate posterior without context-conditioned features:
+
+```python
+registry = BayesianSkillRegistry.in_memory(algorithm="beta_bernoulli")
+```
+
 ## SkillContextBuilder
 
 ```python
@@ -46,7 +52,7 @@ context = SkillContextBuilder(registry).render(task_context="sop_bench", limit=5
 print(context)
 ```
 
-The renderer orders beliefs by context match, posterior success probability, observation count, and token cost.
+The renderer orders beliefs by context match, context-conditioned posterior success probability, observation count, and token cost.
 
 ## RewritePolicy
 
@@ -90,7 +96,7 @@ events = [
     ),
 ]
 
-registry = BayesianSkillRegistry.in_memory()
+registry = BayesianSkillRegistry.in_memory(algorithm="naive_bayes")
 registry.record_many(events)
 
 print(SkillContextBuilder(registry).render(task_context="qa"))
@@ -102,6 +108,7 @@ The package root exports:
 
 ```python
 from bayesian_agent import BayesianSkillRegistry, SkillContextBuilder, TrajectoryEvidence
+from bayesian_agent import NaiveBayesState, BetaBernoulliState
 ```
 
 Lower-level types are available from `bayesian_agent.core`.

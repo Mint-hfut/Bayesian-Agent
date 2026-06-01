@@ -14,7 +14,7 @@ Bayesian-Agent is a Bayesian self-evolving layer for turning verified agent traj
 
 The project focuses on the inference side of agent improvement. Instead of changing base model parameters, it changes the agent's inference environment by maintaining posterior beliefs over Skills, failure modes, token cost, and context-specific reliability.
 
-In v0.x, the Bayesian core is specifically a per-Skill Beta-Bernoulli posterior update over verified success/failure evidence. Fuller Bayesian model selection and uncertainty-aware Skill selection are planned in the roadmap.
+In v0.x, the default Bayesian core is a per-Skill Naive Bayes posterior update over verified success/failure evidence and context/runtime features. The earlier Beta-Bernoulli update remains available as an optional compatibility backend. Fuller Bayesian model selection and uncertainty-aware Skill selection are planned in the roadmap.
 
 Bayesian-Agent is designed to avoid being just another agent framework:
 
@@ -44,7 +44,7 @@ Trajectory -> Verifier -> Evidence -> Posterior Skill Belief -> Better Context -
 
 ## What v0.4 Includes
 
-- Bayesian Skill registry with Beta posterior updates.
+- Bayesian Skill registry with Naive Bayes context-conditioned updates and optional Beta-Bernoulli updates.
 - Evidence schema for agent trajectories.
 - Posterior-weighted Skill context rendering.
 - Failure-mode-aware repair planning.

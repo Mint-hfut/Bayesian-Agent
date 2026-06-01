@@ -24,9 +24,12 @@ class SkillContextBuilder:
         for belief in beliefs:
             decision = self.policy.decide(belief)
             failures = ", ".join(f"{k}={v}" for k, v in sorted(belief.failure_modes.items())[:3]) or "none"
+            context_success = belief.predict_success_probability(context=task_context) if task_context else belief.success_probability
             lines.append(
                 "- "
-                f"{belief.skill_id}: posterior_success={belief.success_probability:.3f}, "
+                f"{belief.skill_id}: algorithm={belief.algorithm}, "
+                f"posterior_success={belief.success_probability:.3f}, "
+                f"context_success={context_success:.3f}, "
                 f"alpha={belief.alpha:.1f}, beta={belief.beta:.1f}, "
                 f"observations={belief.observations}, mean_tokens={belief.mean_tokens:.1f}, "
                 f"rewrite={decision.action}, failures={failures}"

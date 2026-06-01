@@ -38,9 +38,12 @@ Important fields:
 | Field | Type | Description |
 |---|---|---|
 | `skill_id` | string | Skill or SOP hypothesis id. |
-| `alpha` | number | Success count plus prior. |
-| `beta` | number | Failure count plus prior. |
-| `posterior_success` | number | Expected success probability. |
+| `algorithm` | string | Belief backend: `naive_bayes` or `beta_bernoulli`. |
+| `alpha` | number | Compatibility success count plus prior. |
+| `beta` | number | Compatibility failure count plus prior. |
+| `posterior_success` | number | Expected success probability from the selected backend. |
+| `naive_bayes` | object | Naive Bayes state: class counts, feature counts, feature vocabulary, and smoothing prior. |
+| `beta_bernoulli` | object | Beta-Bernoulli state for the optional global success-rate backend. |
 | `contexts` | object | Context observation counts. |
 | `failure_modes` | object | Failure mode counts. |
 | `observations` | integer | Number of evidence updates. |

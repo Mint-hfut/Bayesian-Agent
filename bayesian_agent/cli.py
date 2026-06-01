@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from bayesian_agent.core.algorithms import DEFAULT_ALGORITHM, SUPPORTED_ALGORITHMS
 from bayesian_agent.core.context import SkillContextBuilder
 from bayesian_agent.core.evidence import TrajectoryEvidence
 from bayesian_agent.core.registry import BayesianSkillRegistry
@@ -43,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     evolve.add_argument("--results", action="append", required=True, help="Path to a results JSON file.")
     evolve.add_argument("--registry", required=True, help="Output registry JSON path.")
     evolve.add_argument("--context-out", default="", help="Optional rendered Skill context path.")
+    evolve.add_argument("--algorithm", choices=SUPPORTED_ALGORITHMS, default=DEFAULT_ALGORITHM)
 
     summarize_cmd = sub.add_parser("summarize", help="Summarize a results JSON file.")
     summarize_cmd.add_argument("--results", required=True)
@@ -63,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "evolve":
-        registry = BayesianSkillRegistry(args.registry)
+        registry = BayesianSkillRegistry(args.registry, algorithm=args.algorithm)
         for result_path in args.results:
             registry.record_many(_events_from_results(_read_json(result_path)))
         registry.save()
