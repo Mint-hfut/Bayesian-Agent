@@ -5,16 +5,37 @@ from pathlib import Path
 
 from bayesian_agent.benchmarks.sop_lifelong import compact_baseline_run, incremental_task_filter, prepare_belief_store, replay_skill_evolution_artifacts
 from bayesian_agent.core.evidence import TrajectoryEvidence
-from experiments.run_sop_lifelong import build_run_plan, load_env_file
+from experiments import run_benchmarks
+from experiments.run_benchmarks import build_run_plan, load_env_file
 
 
 class SopLifelongExperimentTests(unittest.TestCase):
+    def test_unified_benchmark_runner_module_exists(self):
+        plan = build_run_plan("all", Path("/tmp/realfin"), [])
+
+        self.assertEqual([run.name for run in plan], ["baseline", "bayesian_full", "bayesian_incremental"])
+        self.assertEqual(plan[2].baseline_paths, ["/tmp/realfin/baseline/results.json"])
+
     def test_all_mode_plans_baseline_full_and_incremental(self):
-        plan = build_run_plan("all", Path("/tmp/sop_lifelong"), [])
+        plan = build_run_plan("all", Path("/tmp/sop"), [])
 
         self.assertEqual([run.name for run in plan], ["baseline", "bayesian_full", "bayesian_incremental"])
         self.assertEqual([run.mode for run in plan], ["baseline", "bayesian-full", "bayesian-incremental"])
-        self.assertEqual(plan[2].baseline_paths, ["/tmp/sop_lifelong/baseline/results.json"])
+        self.assertEqual(plan[2].baseline_paths, ["/tmp/sop/baseline/results.json"])
+
+    def test_core_benchmark_selection_uses_separate_output_roots(self):
+        default_specs = run_benchmarks.build_benchmark_runs("core", "deepseek-v4-flash", "")
+        explicit_specs = run_benchmarks.build_benchmark_runs("core", "deepseek-v4-flash", "/tmp/ba-core")
+
+        self.assertEqual([spec.bench for spec in default_specs], ["sop", "lifelong"])
+        self.assertEqual(
+            [spec.out_root for spec in default_specs],
+            [Path("results/sop_deepseek_v4_flash"), Path("results/lifelong_deepseek_v4_flash")],
+        )
+        self.assertEqual(
+            [spec.out_root for spec in explicit_specs],
+            [Path("/tmp/ba-core/sop"), Path("/tmp/ba-core/lifelong")],
+        )
 
     def test_incremental_filter_runs_zero_tasks_for_bench_without_failures(self):
         baseline_results = {"sop_bench": [{"task_id": "sop_01", "success": True}]}

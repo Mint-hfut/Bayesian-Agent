@@ -223,7 +223,7 @@ bayesian-agent summarize \
   --out temp/summary.json
 ```
 
-跑一次真实 GenericAgent-backed SOP/Lifelong 实验。用 `--model` 在 `deepseek-v4-flash` 和 `deepseek-v4-pro` 之间切换：
+跑一次真实 GenericAgent-backed benchmark 实验。SOP-Bench、Lifelong AgentBench 和 RealFin-Bench 都用同一个脚本；通过 `--bench core`、`--bench sop`、`--bench lifelong` 或 `--bench realfin` 切换。用 `--model` 在 `deepseek-v4-flash` 和 `deepseek-v4-pro` 之间切换：
 
 ```bash
 cd Bayesian-Agent
@@ -231,28 +231,28 @@ export GENERICAGENT_ROOT="/path/to/GenericAgent"
 export DEEPSEEK_API_KEY="sk-..."
 export MODEL="deepseek-v4-flash"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
-  --bench core \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}"
+  --bench core
 ```
 
-想先 smoke test 可以加 `--limit 1`，确认脚本和 token 统计正常后再跑全量。
+使用 `--bench core` 时，runner 会 fan-out 到独立 benchmark root，而不是共用一个组合目录：`results/sop_${MODEL//-/_}` 和 `results/lifelong_${MODEL//-/_}`。如果显式传 `--out-root temp/core_${MODEL//-/_}`，它会被当作父目录，实际结果写到 `temp/core_${MODEL//-/_}/sop` 和 `temp/core_${MODEL//-/_}/lifelong`。
+
+想先 smoke test 可以加 `--limit 1`，确认脚本和 token 统计正常后再跑全量。RealFin-Bench 也保持同样命令形态，把 `--bench` 改成 `realfin` 即可，默认 root 是 `results/realfin_${MODEL//-/_}`。
 
 如果要接一个已有 GA baseline 做增量修复，把结果文件通过 `--baseline-results` 传进来即可。脚本只会重跑失败任务：
 
 ```bash
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode bayesian-incremental \
   --bench core \
   --baseline-results artifacts/ga_deepseek_baseline/sop_results.json \
-  --baseline-results artifacts/ga_deepseek_baseline/lifelong_results.json \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}_incremental_from_ga"
+  --baseline-results artifacts/ga_deepseek_baseline/lifelong_results.json
 ```
 
 ## 🐍 Python API
@@ -344,20 +344,19 @@ v0.4 原型基于 GenericAgent 与 `deepseek-v4-flash`，在 SOP-Bench 和 Lifel
 
 实验 artifacts 位于 [`artifacts/`](artifacts/)，方法说明位于 [`docs/method.md`](docs/method.md)。
 
-如果要用另一个模型复现实验形态，只需要改 `--model` 和 `--out-root`：
+如果要用另一个模型复现实验形态，只需要改 `--model`：
 
 ```bash
 export MODEL="deepseek-v4-pro"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
-  --bench core \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}"
+  --bench core
 ```
 
-默认会依次跑三段：GA baseline、Bayesian 全量自进化、Bayesian 基于所选模型新 baseline 的增量修复。结果会写到 `<out-root>/summary.md`。
+默认会依次跑三段：GA baseline、Bayesian 全量自进化、Bayesian 基于所选模型新 baseline 的增量修复。每个选中的 benchmark 都会写入自己的 benchmark-specific result root 和 `summary.md`。
 
 ## 🔌 GenericAgent 与跨 Harness 适配
 

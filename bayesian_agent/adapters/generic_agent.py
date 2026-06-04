@@ -58,6 +58,8 @@ class GenericAgentAdapter:
     protocol: str = "openai"
     max_tokens: int = 8192
     context_win: int = 50000
+    verify_ssl: bool = True
+    host_header: str = ""
 
     def integration_note(self) -> str:
         return (
@@ -135,7 +137,10 @@ class GenericAgentAdapter:
             "read_timeout": 180,
             "max_tokens": self.max_tokens,
             "context_win": self.context_win,
+            "verify": self.verify_ssl,
         }
+        if self.host_header:
+            common["host_header"] = self.host_header
         if self.protocol == "anthropic":
             return {
                 "native_claude_config_bayesian_agent": {

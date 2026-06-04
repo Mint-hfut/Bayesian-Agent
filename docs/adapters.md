@@ -55,7 +55,7 @@ result = adapter.run(
 )
 ```
 
-It does not eagerly import GenericAgent and does not vendor GenericAgent source code. The experiment script `experiments/run_sop_lifelong.py` uses this adapter for task execution while Bayesian-Agent owns SOP-Bench/Lifelong orchestration, evidence collection, posterior updates, and incremental repair.
+It does not eagerly import GenericAgent and does not vendor GenericAgent source code. The experiment script `experiments/run_benchmarks.py` uses this adapter for task execution while Bayesian-Agent owns SOP-Bench, Lifelong AgentBench, and RealFin-Bench orchestration, evidence collection, posterior updates, and incremental repair.
 
 ## Why This Boundary Matters
 

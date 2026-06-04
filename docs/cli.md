@@ -78,7 +78,7 @@ Rebuild per-task Skill evolution artifacts from an existing `results.json` witho
 
 ```bash
 bayesian-agent replay-skill-artifacts \
-  --results results/sop_lifelong_deepseek_v4_flash/bayesian_full/results.json
+  --results results/sop_deepseek_v4_flash/bayesian_full/results.json
 ```
 
 By default, artifacts are written next to the result file:

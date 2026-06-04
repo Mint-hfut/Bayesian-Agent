@@ -38,6 +38,21 @@ def classify_failure(benchmark: str, run: Mapping[str, Any]) -> str:
             return "wrote_transcript_instead_of_sql_after_workspace_confusion"
         if run.get("error"):
             return str(run.get("error"))[:160]
+    if benchmark == "realfin_benchmark":
+        scores = dict(run.get("scores") or {})
+        if run.get("error"):
+            return str(run.get("error"))[:160]
+        if scores.get("file_created") == 0.0:
+            transcript = str(run.get("transcript") or "")
+            if "could not convert string to float" in transcript or "ValueError" in transcript:
+                return "blank_ohlcv_field_crashed_calculation"
+            return "missing_requested_output_file"
+        if any(float(scores.get(key) or 0.0) < 1.0 for key in _realfin_format_score_keys(scores)):
+            return "invalid_realfin_output_format"
+        if any(float(scores.get(key) or 0.0) < 1.0 for key in _realfin_analysis_trace_score_keys(scores)):
+            return "missing_required_analysis_trace"
+        if scores:
+            return "realfin_automated_check_failed"
     return str(run.get("error") or "benchmark_failure")[:160]
 
 
@@ -155,6 +170,18 @@ def _stable_rules(benchmark: str):
             "For mutation tasks, write executable SQL that reproduces the expected table state.",
             "If SQL ranking is needed, express ranking inside a subquery and keep the final output to one SQL statement.",
         ]
+    if benchmark == "realfin_benchmark":
+        return [
+            "Read `task.json` and `realfin_cache_manifest.json` in the current workspace before calculating.",
+            "Use the local `api_cache` symlink for market data; do not call EastMoney historical endpoints such as `push2his.eastmoney.com`.",
+            "Create exactly the requested output file in the workspace; do not wrap the file content in Markdown.",
+            "Map 创业板 code `300XXX` to baostock CSV `api_cache/baostock/daily_qfq_20230101_20260331/sz.300XXX.csv`.",
+            "When writing stock codes to output files, strip cache market prefixes unless explicitly requested: use `300531`, not `sz.300531`.",
+            "Use auxiliary baostock cache for indexes such as `sh.000001` and `sz.399006`.",
+            "Use Tencent ETF cache files for ETF symbols such as `sz159642` or `sh511010`.",
+            "When a task asks for indicators or constraints, compute them from cached OHLCV data and keep the output format aligned with the prompt.",
+            "Filter cached rows to valid trading rows with non-empty numeric OHLCV fields; skip blank rows instead of crashing numeric conversion.",
+        ]
     return []
 
 
@@ -201,7 +228,77 @@ def _patch_rule_catalog(benchmark: str):
                 "Read only the current task workspace and avoid copying content from sibling benchmark runs.",
             ],
         }
+    if benchmark == "realfin_benchmark":
+        return {
+            "missing_requested_output_file": [
+                "Before finishing, list the task's requested `.txt` output file and verify it exists in the workspace.",
+                "If calculations find no qualifying symbols, still create the requested file with the task-accepted empty-result wording or header.",
+            ],
+            "blank_ohlcv_field_crashed_calculation": [
+                "When reading cached CSV files, skip rows where open/high/low/close/volume is blank or non-numeric.",
+                "Filter to `tradestatus == 1` where available before indicator calculations.",
+                "After handling sparse rows, re-run the calculation and create the requested output file.",
+            ],
+            "invalid_realfin_output_format": [
+                "Match the prompt's output format exactly: headers, comma-separated columns, code format, numeric precision, and sort order.",
+                "For stock-code outputs, strip cache prefixes like `sz.` and `sh.` unless the task explicitly requests prefixed codes.",
+                "Re-read the output file and validate it against the task's automated format constraints before finishing.",
+            ],
+            "missing_required_analysis_trace": [
+                "Run an explicit calculation script over cached OHLCV data and mention the required indicators or checks in the analysis transcript.",
+                "For indicator tasks, use the task's exact indicator names such as MACD, RSI, KDJ, Bollinger, MA, volume, ATR, or correlation.",
+            ],
+        }
     return {}
+
+
+def _realfin_format_score_keys(scores: Mapping[str, Any]):
+    return [
+        key
+        for key in scores
+        if key
+        in {
+            "valid_codes",
+            "valid_format",
+            "valid_values",
+            "reasonable_values",
+            "five_records",
+            "three_records",
+            "has_count",
+            "has_ratio",
+            "correlation_value",
+            "correlation_type",
+            "consistency",
+            "sorted_desc",
+            "valid_dates",
+            "count_limit",
+            "price_positive",
+            "vol_negative",
+            "divergence_positive",
+        }
+    ]
+
+
+def _realfin_analysis_trace_score_keys(scores: Mapping[str, Any]):
+    return [
+        key
+        for key in scores
+        if key.endswith("_computed")
+        or key.endswith("_checked")
+        or key
+        in {
+            "data_fetched",
+            "kdj_computed",
+            "macd_computed",
+            "rsi_computed",
+            "ma_computed",
+            "bollinger_computed",
+            "histogram_computed",
+            "consecutive_checked",
+            "volume_checked",
+            "range_checked",
+        }
+    ]
 
 
 def _benchmark_skill_state(benchmark: str, registry: BayesianSkillRegistry):

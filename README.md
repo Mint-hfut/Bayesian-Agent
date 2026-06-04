@@ -223,7 +223,7 @@ bayesian-agent summarize \
   --out temp/summary.json
 ```
 
-Run a live GenericAgent-backed SOP/Lifelong experiment. Use `--model` to switch between `deepseek-v4-flash` and `deepseek-v4-pro`:
+Run a live GenericAgent-backed benchmark experiment. Use the same script for SOP-Bench, Lifelong AgentBench, and RealFin-Bench; switch benchmarks with `--bench core`, `--bench sop`, `--bench lifelong`, or `--bench realfin`. Use `--model` to switch between `deepseek-v4-flash` and `deepseek-v4-pro`:
 
 ```bash
 cd Bayesian-Agent
@@ -231,28 +231,28 @@ export GENERICAGENT_ROOT="/path/to/GenericAgent"
 export DEEPSEEK_API_KEY="sk-..."
 export MODEL="deepseek-v4-flash"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
-  --bench core \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}"
+  --bench core
 ```
 
-Use `--limit 1` for a smoke test before running the full benchmark.
+With `--bench core`, the runner fans out into separate benchmark roots instead of sharing one combined directory: `results/sop_${MODEL//-/_}` and `results/lifelong_${MODEL//-/_}`. If you pass `--out-root temp/core_${MODEL//-/_}`, it is treated as a parent directory and the runs go to `temp/core_${MODEL//-/_}/sop` and `temp/core_${MODEL//-/_}/lifelong`.
+
+Use `--limit 1` for a smoke test before running the full benchmark. For RealFin-Bench, keep the same command shape and set `--bench realfin`; the default root becomes `results/realfin_${MODEL//-/_}`.
 
 Run incremental repair against an existing GA baseline by passing its result files. The script reruns only failed tasks:
 
 ```bash
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode bayesian-incremental \
   --bench core \
   --baseline-results artifacts/ga_deepseek_baseline/sop_results.json \
-  --baseline-results artifacts/ga_deepseek_baseline/lifelong_results.json \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}_incremental_from_ga"
+  --baseline-results artifacts/ga_deepseek_baseline/lifelong_results.json
 ```
 
 ## 🐍 Python API
@@ -344,20 +344,19 @@ The result shows that Bayesian-Agent can work as a plug-in repair layer: it can 
 
 Experiment artifacts are stored under [`artifacts/`](artifacts/), and the method note is in [`docs/method.md`](docs/method.md).
 
-To reproduce the same experiment shape with another model, change only `--model` and `--out-root`:
+To reproduce the same experiment shape with another model, change only `--model`:
 
 ```bash
 export MODEL="deepseek-v4-pro"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
-  experiments/run_sop_lifelong.py \
+  experiments/run_benchmarks.py \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
-  --bench core \
-  --out-root "temp/sop_lifelong_${MODEL//-/_}"
+  --bench core
 ```
 
-The script runs three phases by default: GA baseline, Bayesian full self-evolution, and Bayesian incremental repair using the fresh baseline for the selected model. Results are written to `<out-root>/summary.md`.
+The script runs three phases by default: GA baseline, Bayesian full self-evolution, and Bayesian incremental repair using the fresh baseline for the selected model. Each selected benchmark writes its own `summary.md` under its benchmark-specific result root.
 
 ## 🔌 GenericAgent and Cross-Harness Adaptation
 
