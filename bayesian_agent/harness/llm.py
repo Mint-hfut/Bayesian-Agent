@@ -76,7 +76,13 @@ class OpenAIChatClient:
                 with urllib.request.urlopen(request, timeout=int(self.timeout_seconds), context=context) as response:
                     raw = response.read().decode("utf-8", errors="replace")
                 return json.loads(raw)
-            except (urllib.error.URLError, TimeoutError, http.client.RemoteDisconnected, json.JSONDecodeError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                http.client.RemoteDisconnected,
+                http.client.IncompleteRead,
+                json.JSONDecodeError,
+            ) as exc:
                 last_error = exc
                 if attempt >= int(self.max_retries or 0):
                     break

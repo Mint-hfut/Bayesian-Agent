@@ -1,31 +1,38 @@
 # Experiments
 
-The first prototype was validated inside GenericAgent with `deepseek-v4-flash`.
+The first prototype was validated inside GenericAgent with `deepseek-v4-flash`. Bayesian-Agent now also includes a first-party native harness, so experiments can run either inside BA itself or through an external compatibility backend.
 
-These experiments are meant to show two deployment paths: Bayesian-Agent can run a full self-evolving loop from scratch, and it can also attach to an existing agent as an incremental repair layer. GenericAgent is the current experimental harness, not a hard dependency of the Bayesian-Agent method.
+These experiments are meant to show three deployment paths: Bayesian-Agent can run a minimal native harness, run a full self-evolving loop from scratch, and attach to an existing agent as an incremental repair layer.
 
 ## Running Benchmarks
 
-The repository includes one model-agnostic script for SOP-Bench, Lifelong AgentBench, and RealFin-Bench. It uses GenericAgent only as the execution harness; Bayesian-Agent owns benchmark orchestration and Skill evolution. Select the benchmark with `--bench core`, `--bench sop`, `--bench lifelong`, or `--bench realfin`.
+The repository includes one model-agnostic script for SOP-Bench, Lifelong AgentBench, and RealFin-Bench. By default it uses the first-party BA native harness. Select the benchmark with `--bench core`, `--bench sop`, `--bench lifelong`, or `--bench realfin`.
 
 ```bash
 cd Bayesian-Agent
-export GENERICAGENT_ROOT="/path/to/GenericAgent"
 export DEEPSEEK_API_KEY="sk-..."
 export MODEL="deepseek-v4-flash"
-"$GENERICAGENT_ROOT/.venv/bin/python" \
+python \
   experiments/run_benchmarks.py \
-  --genericagent-root "$GENERICAGENT_ROOT" \
+  --harness bayesian-agent \
   --model "$MODEL" \
   --mode all \
   --bench core
+```
+
+External backends remain available:
+
+```bash
+--harness genericagent
+--harness mini-swe-agent
+--harness claude-code
 ```
 
 `--bench core` selects SOP-Bench and Lifelong AgentBench together, but it does not write a combined result root. It fans out to `results/sop_${MODEL//-/_}` and `results/lifelong_${MODEL//-/_}`. If you pass `--out-root temp/core_${MODEL//-/_}`, that path is treated as a parent and the benchmark roots become `temp/core_${MODEL//-/_}/sop` and `temp/core_${MODEL//-/_}/lifelong`.
 
 Default `--mode all` runs:
 
-- `baseline`: GenericAgent on SOP-Bench and Lifelong AgentBench.
+- `baseline`: selected harness without Bayesian Skill context.
 - `bayesian_full`: Bayesian full self-evolution from scratch.
 - `bayesian_incremental`: Bayesian repair using the fresh baseline and rerunning only failed tasks.
 
@@ -64,6 +71,7 @@ To repair an existing GA baseline instead of using a fresh baseline from the sam
 ```bash
 "$GENERICAGENT_ROOT/.venv/bin/python" \
   experiments/run_benchmarks.py \
+  --harness genericagent \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode bayesian-incremental \
@@ -71,6 +79,31 @@ To repair an existing GA baseline instead of using a fresh baseline from the sam
   --baseline-results artifacts/ga_deepseek_baseline/sop_results.json \
   --baseline-results artifacts/ga_deepseek_baseline/lifelong_results.json
 ```
+
+## Native Harness Full-Sample Results
+
+These are local full-sample checks with the first-party BA native harness. SOP-Bench and Lifelong AgentBench contain 20 tasks each; RealFin-Bench contains 40 tasks.
+
+| Benchmark | Model | Mode | Score | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| SOP-Bench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 1.05M | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 870k | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_incremental | 20/20 final, 1/1 repaired | 45k incremental | `results/native_harness_deepseek_v4_flash_full/sop` |
+| Lifelong AgentBench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 538k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 514k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_incremental | 20/20 final, 1/1 repaired | 65k incremental | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| RealFin-Bench | deepseek-v4-flash | baseline | 25/40 (62.5%) | 10.29M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| RealFin-Bench | deepseek-v4-flash | bayesian_full | 28/40 (70.0%) | 10.89M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| RealFin-Bench | deepseek-v4-flash | bayesian_incremental | 29/40 final, 4/15 repaired | 3.76M incremental | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| SOP-Bench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 744k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| SOP-Bench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 739k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| Lifelong AgentBench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 422k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 437k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+| RealFin-Bench | deepseek-v4-pro | baseline | 26/40 (65.0%) | 9.54M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| RealFin-Bench | deepseek-v4-pro | bayesian_full | 28/40 (70.0%) | 9.91M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| RealFin-Bench | deepseek-v4-pro | bayesian_incremental | 31/40 final, 5/14 repaired | 4.59M incremental | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+
+The native harness is intentionally simple: LLM, workspace tools, trajectory capture, and three-layer memory. Its job is to execute and observe. More capability improvement is pushed into Bayesian Skill/SOP evolution.
 
 ## Baseline
 
@@ -94,6 +127,18 @@ Bayesian-Agent read the GA baseline traces and reran only failed tasks.
 |---|---|---|---:|---:|---:|---:|---:|
 | SOP-Bench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 254k | 14k | 268k | 14.93 |
 | Lifelong AgentBench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 129k | 10k | 139k | 14.41 |
+
+## Historical GA-Backed RealFin Run
+
+The earlier RealFin validation used GenericAgent as the execution backend with `deepseek-v4-pro`.
+
+| Benchmark | Agent | Model | Accuracy | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| RealFin-Bench | GA | deepseek-v4-pro | 60% | 3.72M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+Bayesian | deepseek-v4-pro | 65% | 3.70M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+BayesianIncremental | deepseek-v4-pro | 68% | 1.72M incremental | `results/realfin_deepseek_v4_pro_20260602` |
+
+Compared with this historical GA-backed RealFin run, BA native reaches 77.5% final accuracy on `deepseek-v4-pro`, but spends more tokens because the minimal first-party harness lets the model inspect cached market data directly.
 
 Published example artifacts are stored under `artifacts/`. New live runs write their own result and Skill evolution artifacts under each benchmark-specific result root.
 

@@ -1,13 +1,13 @@
 # Adapters
 
-Bayesian-Agent is designed to integrate with external agent harnesses without copying their code. This is one of the main reasons the project is not just another agent framework: the Bayesian layer can improve whichever harness emits verified trajectories.
+Bayesian-Agent now has a first-party native harness, and it still integrates with external agent harnesses without copying their code. This is one of the main reasons the project is not just another monolithic framework: the Bayesian layer can improve whichever harness emits verified trajectories.
 
 ## Adaptation Advantage
 
 Bayesian-Agent separates Skill evolution from task execution:
 
 ```text
-Harness executes -> Bayesian-Agent learns -> Adapter injects model-facing Skill/SOP text -> Harness reruns
+Native or external harness executes -> Bayesian-Agent learns -> Skill/SOP text updates -> Harness reruns
 ```
 
 That separation enables three deployment styles:
@@ -15,6 +15,28 @@ That separation enables three deployment styles:
 - run a full benchmark from scratch with Bayesian Skill evolution enabled
 - repair only the failed tasks from an existing agent run
 - reuse the same Skill belief registry across compatible harnesses
+
+## Native Harness First
+
+The default execution backend is now the Bayesian-Agent native harness:
+
+```bash
+python experiments/run_benchmarks.py \
+  --harness bayesian-agent \
+  --model deepseek-v4-flash \
+  --bench core \
+  --mode all \
+  --limit 1
+```
+
+The native harness owns only the minimal execution substrate:
+
+- LLM: a small OpenAI-compatible chat client.
+- Tools: workspace-scoped `file_read`, `file_write`, `code_run`, and `finish`.
+- Memory: three layers, `hippocampus`, intermediate `state`, and persistent `cortex`.
+- Loop: turn execution, tool dispatch, transcript capture, usage accounting, and trajectory persistence.
+
+The harness layer is intentionally simple and efficient. Most capability improvement is meant to come from Bayesian Skill/SOP evolution, where verified trajectories update reusable procedures instead of hiding behavior inside a large runtime.
 
 ## Adapter Contract
 
@@ -71,17 +93,25 @@ External systems should emit:
 
 Bayesian-Agent can then update beliefs, keep posterior audit artifacts, and render the next model-facing Skill/SOP text.
 
-## Planned Bayesian-Agent Harness
+## Optional Compatibility Backends
 
-Current experiments use GenericAgent as the backend harness. A dedicated Bayesian-Agent harness is planned so users can run the full loop without depending on GenericAgent, while still keeping GenericAgent and other frameworks as optional backends.
+External harnesses remain useful for comparison and transfer. Current optional backend names are:
+
+```bash
+--harness genericagent
+--harness mini-swe-agent
+--harness claude-code
+```
+
+Each backend should emit enough trajectory evidence for Bayesian-Agent to update Skill beliefs: task identity, outcome, failure mode, token usage, tool/runtime metadata, and artifacts.
 
 ## MinimalAgent Status
 
-MinimalAgent adapter support is intentionally not included in v0.4.
+MinimalAgent adapter support is intentionally not included in v0.5.
 
 The recommended path is:
 
-1. stabilize the GenericAgent boundary
+1. keep the native harness small and inspectable
 2. keep the core trace schema portable
-3. upload the dedicated Bayesian-Agent harness
+3. use GA, mini-swe-agent, and Claude Code as compatibility backends
 4. add more adapters only after the adapter contract has enough real usage

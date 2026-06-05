@@ -17,12 +17,14 @@ It is designed to stand out from monolithic agent frameworks in three ways:
 
 - **Run from scratch**: start with no prior traces and evolve Skills during full benchmark or production runs.
 - **Repair incrementally**: attach to an existing agent, read its failed trajectories, and rerun only the tasks that need repair.
-- **Adapt across harnesses**: integrate with GenericAgent today, and with other agent frameworks through a portable trajectory schema and adapter boundary.
+- **Run native or adapt across harnesses**: use the first-party Bayesian-Agent harness by default, or integrate with GenericAgent, mini-swe-agent, Claude Code, and other runtimes through a portable trajectory schema and adapter boundary.
 
-> v0.4 is the first standalone release. It includes the core Bayesian Skill Evolution package, schemas, CLI utilities, experiment artifacts, and a runnable GenericAgent adapter boundary. GenericAgent itself is not copied, vendored, or forked.
+> v0.5 adds a first-party native harness on top of the Bayesian Skill Evolution core. GenericAgent, mini-swe-agent, and Claude Code are compatibility backends; they are not copied, vendored, or forked.
 
 ## 📅 News
 
+- **2026-06-05:** Added full-sample native-harness results for SOP-Bench, Lifelong AgentBench, and RealFin-Bench with `deepseek-v4-flash` and `deepseek-v4-pro`; see [Experimental Results](#-experimental-results).
+- **2026-06-05:** Added the first-party Bayesian-Agent native harness. It runs its own LLM loop, workspace tools, three-layer memory, and trajectory capture; GenericAgent, mini-swe-agent, and Claude Code remain optional compatibility backends. See the [Native Harness design note](docs/native-harness.md).
 - **2026-05-31:** Added the Bayesian Evidence Model as the default Skill belief backend, with a categorical likelihood implementation and a legacy Beta-Bernoulli backend for ablations.
 - **2026-05-09:** Released Bayesian-Agent v0.4 as a standalone cross-harness Bayesian Skill Evolution package with schemas, CLI utilities, and experiment artifacts.
 - **2026-05-09:** Added the optional GenericAgent adapter boundary without copying or vendoring GenericAgent.
@@ -136,10 +138,11 @@ Both backends feed the same Skill ranking, posterior audit rendering, and rewrit
 - **Failure-mode-aware repair**: identify recurring errors and generate focused repair plans.
 - **Overfitting-resistant patch activation**: keep single failures as audit evidence, and promote a failure-mode patch into the benchmark prompt only after at least two verified occurrences.
 - **Token-aware context building**: select concise, evidence-backed Skill/SOP text; benchmark prompts receive executable patches and guardrails, while posterior numbers stay in artifacts.
+- **First-party native harness**: run an OpenAI-compatible LLM loop, workspace tools, three-layer memory, and trajectory logging inside Bayesian-Agent itself.
 - **Full self-evolution from scratch**: run all tasks, collect evidence online, and evolve Skills without prior traces.
 - **Incremental repair for existing agents**: consume failed trajectories from a baseline agent and rerun only the failed tasks.
-- **Cross-harness adaptation**: integrate with GenericAgent today and other agent frameworks through adapters instead of vendoring their code.
-- **Standard-library-first core**: v0.4 has no runtime dependency beyond Python.
+- **Cross-harness adaptation**: use BA native by default, or integrate with GenericAgent, mini-swe-agent, Claude Code, and other frameworks through adapters instead of vendoring their code.
+- **Standard-library-first core**: the core package has no runtime dependency beyond Python.
 
 ## 🧬 Self-Evolution Mechanism
 
@@ -231,16 +234,15 @@ bayesian-agent summarize \
   --out temp/summary.json
 ```
 
-Run a live GenericAgent-backed benchmark experiment. Use the same script for SOP-Bench, Lifelong AgentBench, and RealFin-Bench; switch benchmarks with `--bench core`, `--bench sop`, `--bench lifelong`, or `--bench realfin`. Use `--model` to switch between `deepseek-v4-flash` and `deepseek-v4-pro`:
+Run a live benchmark with the first-party Bayesian-Agent harness. Use the same script for SOP-Bench, Lifelong AgentBench, and RealFin-Bench; switch benchmarks with `--bench core`, `--bench sop`, `--bench lifelong`, or `--bench realfin`. Use `--model` to switch between `deepseek-v4-flash` and `deepseek-v4-pro`:
 
 ```bash
 cd Bayesian-Agent
-export GENERICAGENT_ROOT="/path/to/GenericAgent"
 export DEEPSEEK_API_KEY="sk-..."
 export MODEL="deepseek-v4-flash"
-"$GENERICAGENT_ROOT/.venv/bin/python" \
+python \
   experiments/run_benchmarks.py \
-  --genericagent-root "$GENERICAGENT_ROOT" \
+  --harness bayesian-agent \
   --model "$MODEL" \
   --mode all \
   --bench core
@@ -250,11 +252,20 @@ With `--bench core`, the runner fans out into separate benchmark roots instead o
 
 Use `--limit 1` for a smoke test before running the full benchmark. For RealFin-Bench, keep the same command shape and set `--bench realfin`; the default root becomes `results/realfin_${MODEL//-/_}`.
 
+External compatibility backends remain available when you want to compare against another harness:
+
+```bash
+--harness genericagent
+--harness mini-swe-agent
+--harness claude-code
+```
+
 Run incremental repair against an existing GA baseline by passing its result files. The script reruns only failed tasks:
 
 ```bash
 "$GENERICAGENT_ROOT/.venv/bin/python" \
   experiments/run_benchmarks.py \
+  --harness genericagent \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode bayesian-incremental \
@@ -318,9 +329,39 @@ This makes Bayesian-Agent a portable Skill/SOP evolution layer rather than anoth
 
 ## 📊 Experimental Results
 
-The v0.4 prototype was validated with GenericAgent and `deepseek-v4-flash` on SOP-Bench and Lifelong AgentBench.
+Bayesian-Agent now has its own native harness. The results below are full-sample runs with no `--limit`: SOP-Bench and Lifelong AgentBench use 20 tasks each, and RealFin-Bench uses 40 tasks.
 
-### 🧱 Baseline: GenericAgent + deepseek-v4-flash
+### 🧩 Native Harness Full-Sample Results
+
+| Benchmark | Model | Mode | Score | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| SOP-Bench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 1.05M | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 870k | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_incremental | 20/20 final, 1/1 repaired | 45k incremental | `results/native_harness_deepseek_v4_flash_full/sop` |
+| Lifelong AgentBench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 538k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 514k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_incremental | 20/20 final, 1/1 repaired | 65k incremental | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| SOP-Bench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 744k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| SOP-Bench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 739k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| Lifelong AgentBench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 422k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 437k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+
+### 📈 Native RealFin Full-Sample Results
+
+| Model | Mode | Score | Total Tokens | Evidence |
+|---|---|---:|---:|---|
+| deepseek-v4-flash | baseline | 25/40 (62.5%) | 10.29M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-flash | bayesian_full | 28/40 (70.0%) | 10.89M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-flash | bayesian_incremental | 29/40 final, 4/15 repaired | 3.76M incremental | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-pro | baseline | 26/40 (65.0%) | 9.54M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| deepseek-v4-pro | bayesian_full | 28/40 (70.0%) | 9.91M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| deepseek-v4-pro | bayesian_incremental | 31/40 final, 5/14 repaired | 4.59M incremental | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+
+Compared with the earlier GA-backed artifacts, BA native improves the full RealFin final score on `deepseek-v4-pro` from 68% to 77.5%, but it spends more tokens because the first-party harness deliberately keeps the runtime minimal and lets the model inspect cached market data directly. On SOP/Lifelong, BA native reaches 95-100% full-sample accuracy while using less token budget than the historical GA-backed full runs.
+
+### 🧱 Published GA Validation: GenericAgent + deepseek-v4-flash
+
+The earlier published validation used GenericAgent as the execution backend.
 
 | Benchmark | Agent | Model | Accuracy | Input Tokens | Output Tokens | Total Tokens | Efficiency |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -348,50 +389,68 @@ In incremental mode, Bayesian-Agent only reran failed GenericAgent tasks:
 | SOP-Bench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 254k | 14k | 268k | 14.93 |
 | Lifelong AgentBench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 129k | 10k | 139k | 14.41 |
 
+### 📉 Historical GA-Backed RealFin Run
+
+The earlier RealFin validation used GenericAgent as the execution backend with `deepseek-v4-pro`.
+
+| Benchmark | Agent | Model | Accuracy | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| RealFin-Bench | GA | deepseek-v4-pro | 60% | 3.72M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+Bayesian | deepseek-v4-pro | 65% | 3.70M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+BayesianIncremental | deepseek-v4-pro | 68% | 1.72M incremental | `results/realfin_deepseek_v4_pro_20260602` |
+
 The result shows that Bayesian-Agent can work as a plug-in repair layer: it can take an existing agent below 100% accuracy and improve it with a small amount of incremental inference. This is the practical advantage over one-off benchmark agents: Bayesian-Agent can sit beside a harness, learn from its failures, and improve it without replacing it.
 
-Experiment artifacts are stored under [`artifacts/`](artifacts/), and the method note is in [`docs/method.md`](docs/method.md).
+Experiment artifacts are stored under [`artifacts/`](artifacts/) and [`results/`](results/), and the method note is in [`docs/method.md`](docs/method.md). The native harness design note is in [`docs/native-harness.md`](docs/native-harness.md).
 
-To reproduce the same experiment shape with another model, change only `--model`:
+To reproduce the same GA-backed experiment shape with another model, change `--model` and run the GenericAgent compatibility backend:
 
 ```bash
 export MODEL="deepseek-v4-pro"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
   experiments/run_benchmarks.py \
+  --harness genericagent \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
   --bench core
 ```
 
-The script runs three phases by default: GA baseline, Bayesian full self-evolution, and Bayesian incremental repair using the fresh baseline for the selected model. Each selected benchmark writes its own `summary.md` under its benchmark-specific result root.
+The script runs three phases by default: selected-harness baseline, Bayesian full self-evolution, and Bayesian incremental repair using the fresh baseline for the selected model. Each selected benchmark writes its own `summary.md` under its benchmark-specific result root.
 
-## 🔌 GenericAgent and Cross-Harness Adaptation
+## 🔌 Native Harness and Cross-Harness Adaptation
 
-The first prototype was validated inside GenericAgent, but Bayesian-Agent is not a GenericAgent fork and not just a GenericAgent add-on.
+The first prototype was validated inside GenericAgent, but Bayesian-Agent now has its own execution harness. It is not a GenericAgent fork and not just a GenericAgent add-on.
 
 The open-source structure is:
 
 - `bayesian_agent/core/`: framework-agnostic Bayesian Skill Evolution logic
+- `bayesian_agent/harness/`: first-party LLM loop, workspace tools, and trajectory capture
+- `bayesian_agent/memory/`: three-layer hippocampus / state / cortex memory
 - `bayesian_agent/adapters/base.py`: minimal adapter contract for external agents
 - `bayesian_agent/adapters/generic_agent.py`: optional GenericAgent boundary
+- `bayesian_agent/adapters/mini_swe_agent.py`: optional mini-swe-agent boundary
+- `bayesian_agent/adapters/claude_code.py`: optional Claude Code boundary
 - `schemas/`: portable trajectory and Skill belief schemas
-- `artifacts/`: reproducible benchmark result files
+- `artifacts/` and `results/`: reproducible benchmark result files
 
-GenericAgent remains the current experimental backend. Users can integrate Bayesian-Agent with their own agent harness by emitting the common trajectory schema and implementing the adapter boundary.
+The native harness is deliberately small: LLM, tools, memory, loop, and trajectory capture. More capability improvement is pushed into Bayesian Skill/SOP evolution, so the learning layer stays inspectable and portable.
 
-The long-term direction is to make Bayesian-Agent the Bayesian Skill/SOP evolution layer for many agent runtimes: GenericAgent, our own upcoming Agent harness, and other external frameworks.
+GenericAgent, mini-swe-agent, and Claude Code remain optional compatibility backends. Users can integrate Bayesian-Agent with their own agent harness by emitting the common trajectory schema and implementing the adapter boundary.
 
-MinimalAgent adapter support is intentionally not included in v0.4.
+MinimalAgent adapter support is intentionally not included in v0.5.
 
 ## 🗂️ Repository Layout
 
 ```text
 bayesian_agent/
   core/                 # Evidence, beliefs, registry, policy, context, repair
-  adapters/             # Adapter contract and optional GenericAgent boundary
+  harness/              # First-party native harness
+  memory/               # Three-layer hippocampus / state / cortex memory
+  adapters/             # Adapter contract and optional compatibility backends
 schemas/                # JSON schemas for trajectories and Skill beliefs
 artifacts/              # Baseline, full-mode, and incremental-mode result artifacts
+results/                # Live benchmark result artifacts
 docs/                   # Method and experiment notes
 examples/               # Integration notes
 tests/                  # Standard-library unittest suite
@@ -405,12 +464,13 @@ tests/                  # Standard-library unittest suite
 - [x] Implement full self-evolving primitives.
 - [x] Implement incremental repair utilities.
 - [x] Add a GenericAgent optional adapter boundary without vendoring GenericAgent.
+- [x] Add the first-party Bayesian-Agent native harness.
+- [x] Add optional mini-swe-agent and Claude Code backend boundaries.
 - [x] Release experiment result artifacts.
 - [x] Add English and Chinese project READMEs.
-- [ ] Add executable benchmark runners for external checkouts.
+- [x] Add executable benchmark runners for native and external backends.
 - [ ] Add richer rewrite policies and adapter examples.
-- [ ] Add adapters for more agent harnesses after the GenericAgent boundary stabilizes.
-- [ ] Release our own Agent harness for Bayesian-Agent; current experiments use GenericAgent as the backend harness.
+- [ ] Add adapters for more agent harnesses after the current boundaries stabilize.
 - [ ] Move beyond the current per-Skill evidence backend toward richer Bayesian reasoning, including Skill hypothesis inference, Bayesian Networks for context/failure structure, uncertainty-aware Skill selection, Bayesian decision policies, and online adaptation.
 
 

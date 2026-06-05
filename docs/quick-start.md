@@ -4,7 +4,7 @@ This guide shows the shortest path from installation to a Bayesian Skill registr
 
 Bayesian-Agent supports three paths:
 
-- start from scratch and evolve Skills during a full run
+- run the first-party native harness and evolve Skills during a full run
 - repair only failed tasks from an existing agent run
 - adapt the same Bayesian Skill registry to another harness through an adapter
 
@@ -16,7 +16,23 @@ cd Bayesian-Agent
 python -m pip install -e .
 ```
 
-Bayesian-Agent v0.4 has no runtime dependencies beyond the Python standard library.
+The core package has no runtime dependencies beyond the Python standard library.
+
+## Run The Native Harness
+
+The benchmark runner defaults to the Bayesian-Agent harness. It owns the LLM loop, workspace tools, three-layer memory, and trajectory capture:
+
+```bash
+export DEEPSEEK_API_KEY="sk-..."
+python experiments/run_benchmarks.py \
+  --harness bayesian-agent \
+  --model deepseek-v4-flash \
+  --bench core \
+  --mode all \
+  --limit 1
+```
+
+Use `--bench realfin` for RealFin-Bench. External compatibility backends remain available with `--harness genericagent`, `--harness mini-swe-agent`, or `--harness claude-code`.
 
 ## Update a Skill Registry
 

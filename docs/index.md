@@ -18,11 +18,11 @@ In v0.5, the default Bayesian core is a per-Skill **Bayesian Evidence Model** ov
 
 Agent runs are expensive: tokens are expensive, latency is high, benchmark cases are limited, and real production failures are even rarer. When samples are scarce, each sample is costly, and we cannot wait for large-sample statistics to stabilize, Bayesian modeling lets Bayesian-Agent combine prior belief, uncertainty, and new verified evidence into more stable Skill rewrite decisions.
 
-Bayesian-Agent is designed to avoid being just another agent framework:
+Bayesian-Agent is designed to avoid being just another monolithic agent framework:
 
 - **Full-run evolution from scratch**: run tasks without prior traces and evolve Skills online.
 - **Incremental repair**: attach to an existing agent, learn from failed trajectories, and rerun only failed tasks.
-- **Cross-harness adaptation**: integrate with GenericAgent today and other agent frameworks through a portable trajectory schema and adapter boundary.
+- **Native-first, cross-harness adaptation**: run with the lightweight BA native harness, or integrate with GenericAgent and other agent frameworks through adapters.
 
 <div align="center">
   <img src="assets/bayesian_agent_overview.png" width="900" alt="Bayesian-Agent overview"/>
@@ -44,16 +44,17 @@ Skills and SOPs are the durable memory of a harness. Bayesian-Agent makes their 
 Trajectory -> Verifier -> Evidence -> Posterior Skill Belief -> Better Context -> Next Run
 ```
 
-## What v0.4 Includes
+## What v0.5 Includes
 
 - Bayesian Skill registry with Bayesian Evidence Model updates and optional Beta-Bernoulli updates.
 - Evidence schema for agent trajectories.
 - Posterior-weighted Skill context rendering.
 - Failure-mode-aware repair planning.
+- First-party native harness with a minimal LLM loop, workspace tools, three-layer memory, and trajectory capture.
 - CLI utilities for trace ingestion, summarization, and incremental repair.
-- GenericAgent integration boundary without copying or vendoring GenericAgent.
+- GenericAgent, mini-swe-agent, and Claude Code integration boundaries without copying or vendoring those runtimes.
 - Three operating patterns: full self-evolution, incremental repair, and cross-harness adaptation.
-- SOP-Bench and Lifelong AgentBench result artifacts.
+- SOP-Bench, Lifelong AgentBench, and RealFin result artifacts.
 
 ## Install
 
@@ -75,6 +76,7 @@ mkdocs serve
 - Start with the [Quick Start](quick-start.md).
 - Read the [Core Concepts](core-concepts.md) if you want the Bayesian framing.
 - Read [Why Bayesian for Skill Evolution](articles/why-bayesian-for-skill-evolution.md) for the small-sample, cost-sensitive motivation.
+- Read [Native Harness](native-harness.md) for the first-party harness design.
 - Use the [CLI](cli.md) to update a registry from traces.
 - Read [Adapters](adapters.md) to understand how Bayesian-Agent moves across harnesses.
-- Inspect [Experiments](experiments/index.md) for the GenericAgent + `deepseek-v4-flash` validation.
+- Inspect [Experiments](experiments/index.md) for native-harness full-sample results and GA-backed validation.

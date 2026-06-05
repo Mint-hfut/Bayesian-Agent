@@ -1,12 +1,42 @@
 import tempfile
 import unittest
+import http.client
 from pathlib import Path
+from unittest import mock
 
+from bayesian_agent.harness.llm import OpenAIChatClient
 from bayesian_agent.harness.native import NativeBayesianAgentAdapter
 from bayesian_agent.harness.tools import WorkspaceToolbox
 
 
 class NativeHarnessTests(unittest.TestCase):
+    def test_openai_client_retries_incomplete_chunked_reads(self):
+        attempts = {"count": 0}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                attempts["count"] += 1
+                if attempts["count"] == 1:
+                    raise http.client.IncompleteRead(b"")
+                return (
+                    b'{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],'
+                    b'"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}'
+                )
+
+        client = OpenAIChatClient(api_key="test", max_retries=1)
+        with mock.patch("urllib.request.urlopen", return_value=Response()), mock.patch("time.sleep"):
+            result = client.chat([], [])
+
+        self.assertEqual(result["content"], "ok")
+        self.assertEqual(result["usage"]["total_tokens"], 3)
+        self.assertEqual(attempts["count"], 2)
+
     def test_native_harness_runs_llm_tool_loop_without_external_harness(self):
         class FakeClient:
             def __init__(self):

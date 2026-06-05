@@ -50,6 +50,7 @@ nav:
   - Quick Start: quick-start.md
   - Core Concepts: core-concepts.md
   - Architecture: architecture.md
+  - Native Harness: native-harness.md
   - CLI: cli.md
   - Python API: python-api.md
   - Adapters: adapters.md

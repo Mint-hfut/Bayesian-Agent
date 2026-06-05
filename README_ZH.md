@@ -17,12 +17,14 @@ Bayesian-Agent 是一个面向跨 Agent framework / execution harness 的 Bayesi
 
 - **从零自进化**：没有历史 traces 也能从完整 benchmark 或生产任务中在线沉淀 Skills。
 - **增量修复**：接到已有 Agent 后面，读取失败轨迹，只重跑需要修复的任务。
-- **跨 harness 适配**：当前适配 GenericAgent，后续可通过统一 trajectory schema 和 adapter boundary 接入其他 agent frameworks。
+- **自家 harness + 跨 harness 适配**：默认使用 Bayesian-Agent 自己的 native harness，也可以通过统一 trajectory schema 和 adapter boundary 接入 GenericAgent、mini-swe-agent、Claude Code 以及其他 agent runtimes。
 
-> v0.4 是第一个独立开源版本。它包含 Bayesian Skill Evolution 核心包、Schema、CLI 工具、实验 artifacts，以及可运行的 GenericAgent adapter boundary。GenericAgent 本身不会被复制、vendoring 或 fork 到本仓库中。
+> v0.5 在 Bayesian Skill Evolution 核心之上新增了自家 native harness。GenericAgent、mini-swe-agent、Claude Code 是兼容 backend；它们不会被复制、vendoring 或 fork 到本仓库中。
 
 ## 📅 News
 
+- **2026-06-05:** 新增 SOP-Bench、Lifelong AgentBench、RealFin-Bench 的 native-harness 全样本结果，覆盖 `deepseek-v4-flash` 和 `deepseek-v4-pro`；详见 [实验结果](#-实验结果)。
+- **2026-06-05:** 新增 Bayesian-Agent 自家 native harness：由 BA 自己运行 LLM loop、workspace tools、三层记忆和 trajectory capture；GenericAgent、mini-swe-agent、Claude Code 保留为可选兼容 backend。详见 [Native Harness 设计说明](docs/native-harness.md)。
 - **2026-05-31:** 将 Bayesian Evidence Model 作为默认 Skill belief backend：当前实现使用 categorical likelihood，同时保留 Beta-Bernoulli 作为消融和兼容 backend。
 - **2026-05-09:** 发布 Bayesian-Agent v0.4 独立 package，包含跨 harness Bayesian Skill Evolution 核心 primitives、schemas、CLI utilities 和实验 artifacts。
 - **2026-05-09:** 增加可选 GenericAgent adapter boundary，不复制、不 vendoring GenericAgent。
@@ -136,10 +138,11 @@ E[p_k | D_k] = (alpha_0 + s_k) / (alpha_0 + beta_0 + s_k + f_k)
 - **面向失败模式的修复**：识别反复出现的错误，生成聚焦的 repair plan。
 - **抗过拟合的 patch 激活**：单次失败只作为审计证据保存；同一 failure mode 至少出现两次验证失败后，才把 patch 提升到 benchmark prompt。
 - **Token-aware context 构建**：选择简洁、有证据支持的 Skill/SOP 文本；benchmark prompt 接收可执行 patches 和 guardrails，posterior 数字保存在 artifacts 中。
+- **自家 native harness**：在 Bayesian-Agent 内部直接运行 OpenAI-compatible LLM loop、workspace tools、三层记忆和 trajectory logging。
 - **从零全量自进化**：完整运行任务，在线收集 evidence，并在无历史 traces 的情况下进化 Skills。
 - **已有 Agent 的增量修复层**：读取 baseline agent 的失败轨迹，只重跑失败任务。
-- **跨 harness 适配**：当前集成 GenericAgent，后续通过 adapters 接入其他 agent frameworks，而不是复制它们的代码。
-- **标准库优先**：v0.4 核心运行时不依赖 Python 标准库之外的包。
+- **跨 harness 适配**：默认使用 BA native，也可以通过 adapters 接入 GenericAgent、mini-swe-agent、Claude Code 和其他 frameworks，而不是复制它们的代码。
+- **标准库优先**：核心 package 运行时不依赖 Python 标准库之外的包。
 
 ## 🧬 自我进化机制
 
@@ -231,16 +234,15 @@ bayesian-agent summarize \
   --out temp/summary.json
 ```
 
-跑一次真实 GenericAgent-backed benchmark 实验。SOP-Bench、Lifelong AgentBench 和 RealFin-Bench 都用同一个脚本；通过 `--bench core`、`--bench sop`、`--bench lifelong` 或 `--bench realfin` 切换。用 `--model` 在 `deepseek-v4-flash` 和 `deepseek-v4-pro` 之间切换：
+用 Bayesian-Agent 自家 native harness 跑一次真实 benchmark。SOP-Bench、Lifelong AgentBench 和 RealFin-Bench 都用同一个脚本；通过 `--bench core`、`--bench sop`、`--bench lifelong` 或 `--bench realfin` 切换。用 `--model` 在 `deepseek-v4-flash` 和 `deepseek-v4-pro` 之间切换：
 
 ```bash
 cd Bayesian-Agent
-export GENERICAGENT_ROOT="/path/to/GenericAgent"
 export DEEPSEEK_API_KEY="sk-..."
 export MODEL="deepseek-v4-flash"
-"$GENERICAGENT_ROOT/.venv/bin/python" \
+python \
   experiments/run_benchmarks.py \
-  --genericagent-root "$GENERICAGENT_ROOT" \
+  --harness bayesian-agent \
   --model "$MODEL" \
   --mode all \
   --bench core
@@ -250,11 +252,20 @@ export MODEL="deepseek-v4-flash"
 
 想先 smoke test 可以加 `--limit 1`，确认脚本和 token 统计正常后再跑全量。RealFin-Bench 也保持同样命令形态，把 `--bench` 改成 `realfin` 即可，默认 root 是 `results/realfin_${MODEL//-/_}`。
 
+如果要和其他 harness 对比，可以切到可选兼容 backend：
+
+```bash
+--harness genericagent
+--harness mini-swe-agent
+--harness claude-code
+```
+
 如果要接一个已有 GA baseline 做增量修复，把结果文件通过 `--baseline-results` 传进来即可。脚本只会重跑失败任务：
 
 ```bash
 "$GENERICAGENT_ROOT/.venv/bin/python" \
   experiments/run_benchmarks.py \
+  --harness genericagent \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode bayesian-incremental \
@@ -318,9 +329,39 @@ Any Agent Harness -> Trajectory Schema -> Bayesian Skill Registry -> Adapter -> 
 
 ## 📊 实验结果
 
-v0.4 原型基于 GenericAgent 与 `deepseek-v4-flash`，在 SOP-Bench 和 Lifelong AgentBench 上完成验证。
+Bayesian-Agent 现在已经有自己的 native harness。下面是全样本结果，没有使用 `--limit`：SOP-Bench 和 Lifelong AgentBench 各 20 条任务，RealFin-Bench 40 条任务。
 
-### 🧱 Baseline: GenericAgent + deepseek-v4-flash
+### 🧩 Native Harness 全样本结果
+
+| Benchmark | Model | Mode | Score | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| SOP-Bench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 1.05M | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 870k | `results/native_harness_deepseek_v4_flash_full/sop` |
+| SOP-Bench | deepseek-v4-flash | bayesian_incremental | 20/20 final，1/1 repaired | 45k incremental | `results/native_harness_deepseek_v4_flash_full/sop` |
+| Lifelong AgentBench | deepseek-v4-flash | baseline | 19/20 (95.0%) | 538k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_full | 20/20 (100.0%) | 514k | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-flash | bayesian_incremental | 20/20 final，1/1 repaired | 65k incremental | `results/native_harness_deepseek_v4_flash_full/lifelong` |
+| SOP-Bench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 744k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| SOP-Bench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 739k | `results/native_harness_deepseek_v4_pro_full/sop` |
+| Lifelong AgentBench | deepseek-v4-pro | baseline | 20/20 (100.0%) | 422k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+| Lifelong AgentBench | deepseek-v4-pro | bayesian_full | 20/20 (100.0%) | 437k | `results/native_harness_deepseek_v4_pro_full/lifelong` |
+
+### 📈 Native RealFin 全样本结果
+
+| Model | Mode | Score | Total Tokens | Evidence |
+|---|---|---:|---:|---|
+| deepseek-v4-flash | baseline | 25/40 (62.5%) | 10.29M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-flash | bayesian_full | 28/40 (70.0%) | 10.89M | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-flash | bayesian_incremental | 29/40 final，4/15 repaired | 3.76M incremental | `results/native_harness_deepseek_v4_flash_full/realfin` |
+| deepseek-v4-pro | baseline | 26/40 (65.0%) | 9.54M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| deepseek-v4-pro | bayesian_full | 28/40 (70.0%) | 9.91M | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+| deepseek-v4-pro | bayesian_incremental | 31/40 final，5/14 repaired | 4.59M incremental | `results/native_harness_deepseek_v4_pro_full/realfin_retry` |
+
+和早期 GA-backed artifacts 相比，BA native 在 `deepseek-v4-pro` RealFin 的最终分数从 68% 提升到 77.5%，但 token 成本更高，因为自家 harness 有意保持极简，让模型直接检查缓存行情数据。SOP/Lifelong 上，BA native 在全样本下达到 95-100% 准确率，并且 token 成本低于历史 GA-backed full runs。
+
+### 🧱 已发布 GA 验证：GenericAgent + deepseek-v4-flash
+
+早期已发布验证使用 GenericAgent 作为执行 backend。
 
 | Benchmark | Agent | Model | Accuracy | Input Tokens | Output Tokens | Total Tokens | Efficiency |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -348,50 +389,68 @@ v0.4 原型基于 GenericAgent 与 `deepseek-v4-flash`，在 SOP-Bench 和 Lifel
 | SOP-Bench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 254k | 14k | 268k | 14.93 |
 | Lifelong AgentBench | GA+BayesianIncremental | deepseek-v4-flash | 100% | 129k | 10k | 139k | 14.41 |
 
+### 📉 历史 GA-backed RealFin Run
+
+早期 RealFin 验证使用 GenericAgent 作为执行 backend，模型为 `deepseek-v4-pro`。
+
+| Benchmark | Agent | Model | Accuracy | Total Tokens | Evidence |
+|---|---|---|---:|---:|---|
+| RealFin-Bench | GA | deepseek-v4-pro | 60% | 3.72M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+Bayesian | deepseek-v4-pro | 65% | 3.70M | `results/realfin_deepseek_v4_pro_20260602` |
+| RealFin-Bench | GA+BayesianIncremental | deepseek-v4-pro | 68% | 1.72M incremental | `results/realfin_deepseek_v4_pro_20260602` |
+
 这说明 Bayesian-Agent 可以作为即插即用的 repair layer：接在一个未达到 100% 准确率的 Agent 后面，用较小的增量推理成本把失败任务补齐。这也是它区别于普通 benchmark agent 的关键：它可以站在 harness 旁边，学习它的失败，并在不替换它的情况下提升它。
 
-实验 artifacts 位于 [`artifacts/`](artifacts/)，方法说明位于 [`docs/method.md`](docs/method.md)。
+实验 artifacts 位于 [`artifacts/`](artifacts/) 和 [`results/`](results/)，方法说明位于 [`docs/method.md`](docs/method.md)。自家 harness 设计说明位于 [`docs/native-harness.md`](docs/native-harness.md)。
 
-如果要用另一个模型复现实验形态，只需要改 `--model`：
+如果要用另一个模型复现 GA-backed 实验形态，修改 `--model` 并选择 GenericAgent 兼容 backend：
 
 ```bash
 export MODEL="deepseek-v4-pro"
 "$GENERICAGENT_ROOT/.venv/bin/python" \
   experiments/run_benchmarks.py \
+  --harness genericagent \
   --genericagent-root "$GENERICAGENT_ROOT" \
   --model "$MODEL" \
   --mode all \
   --bench core
 ```
 
-默认会依次跑三段：GA baseline、Bayesian 全量自进化、Bayesian 基于所选模型新 baseline 的增量修复。每个选中的 benchmark 都会写入自己的 benchmark-specific result root 和 `summary.md`。
+默认会依次跑三段：所选 harness baseline、Bayesian 全量自进化、Bayesian 基于所选模型新 baseline 的增量修复。每个选中的 benchmark 都会写入自己的 benchmark-specific result root 和 `summary.md`。
 
-## 🔌 GenericAgent 与跨 Harness 适配
+## 🔌 自家 Harness 与跨 Harness 适配
 
-第一个原型是在 GenericAgent 内部验证的，但 Bayesian-Agent 不是 GenericAgent fork，也不只是 GenericAgent 的附属模块。
+第一个原型是在 GenericAgent 内部验证的，但 Bayesian-Agent 现在已经有自己的执行 harness。它不是 GenericAgent fork，也不只是 GenericAgent 的附属模块。
 
 开源结构是：
 
 - `bayesian_agent/core/`：框架无关的 Bayesian Skill Evolution 逻辑
+- `bayesian_agent/harness/`：自家 LLM loop、workspace tools 和 trajectory capture
+- `bayesian_agent/memory/`：三层 hippocampus / state / cortex 记忆
 - `bayesian_agent/adapters/base.py`：外部 Agent 的最小 adapter contract
 - `bayesian_agent/adapters/generic_agent.py`：可选 GenericAgent 集成边界
+- `bayesian_agent/adapters/mini_swe_agent.py`：可选 mini-swe-agent 集成边界
+- `bayesian_agent/adapters/claude_code.py`：可选 Claude Code 集成边界
 - `schemas/`：可移植的 trajectory 与 Skill belief schema
-- `artifacts/`：可复现实验结果文件
+- `artifacts/` 和 `results/`：可复现实验结果文件
 
-GenericAgent 是当前实验后端。其他 Agent harness 只要能产出统一 trajectory schema，并实现 adapter boundary，也可以接入 Bayesian-Agent。
+native harness 有意保持极简：LLM、tools、memory、loop 和 trajectory capture。更多能力提升放在 Bayesian Skill/SOP evolution 上，这样学习层更容易审计，也更容易迁移。
 
-长期方向是让 Bayesian-Agent 成为多个 agent runtime 共享的 Bayesian Skill/SOP evolution layer：包括 GenericAgent、我们后续会上传的自研 Agent harness，以及其他外部框架。
+GenericAgent、mini-swe-agent 和 Claude Code 保留为可选兼容 backend。其他 Agent harness 只要能产出统一 trajectory schema，并实现 adapter boundary，也可以接入 Bayesian-Agent。
 
-MinimalAgent adapter 在 v0.4 中按计划暂不提供。
+MinimalAgent adapter 在 v0.5 中按计划暂不提供。
 
 ## 🗂️ 仓库结构
 
 ```text
 bayesian_agent/
   core/                 # Evidence, beliefs, registry, policy, context, repair
-  adapters/             # Adapter contract and optional GenericAgent boundary
+  harness/              # First-party native harness
+  memory/               # Three-layer hippocampus / state / cortex memory
+  adapters/             # Adapter contract and optional compatibility backends
 schemas/                # JSON schemas for trajectories and Skill beliefs
 artifacts/              # Baseline, full-mode, and incremental-mode result artifacts
+results/                # Live benchmark result artifacts
 docs/                   # Method and experiment notes
 examples/               # Integration notes
 tests/                  # Standard-library unittest suite
@@ -405,17 +464,18 @@ tests/                  # Standard-library unittest suite
 - [x] 实现 full self-evolving primitives。
 - [x] 实现 incremental repair utilities。
 - [x] 增加 GenericAgent optional adapter boundary，不 vendoring GenericAgent。
+- [x] 增加 Bayesian-Agent 自家 native harness。
+- [x] 增加 mini-swe-agent 和 Claude Code 可选 backend boundary。
 - [x] 发布实验结果 artifacts。
 - [x] 增加英文和中文 README。
-- [ ] 增加可在外部 checkout 中执行的 benchmark runners。
+- [x] 增加可运行 native 和外部 backend 的 benchmark runners。
 - [ ] 增加更丰富的 rewrite policies 和 adapter examples。
-- [ ] GenericAgent 边界稳定后再扩展更多 agent harness adapters。
-- [ ] 上传我们自己的 Agent harness；当前实验阶段使用 GenericAgent 作为 backend harness。
+- [ ] 当前几个边界稳定后再扩展更多 agent harness adapters。
 - [ ] 从当前 per-Skill evidence backend 继续升级到更完整的 Bayesian reasoning，包括 Skill hypothesis inference、用于 context/failure structure 的 Bayesian Networks、不确定性感知的 Skill selection、Bayesian decision policies 和 online adaptation。
 
 ## 🚦 当前状态
 
-Bayesian-Agent v0.4 是早期独立版本。当前 package 可用于 trace ingestion、Bayesian Skill belief update、context rendering、repair planning 和 result summarization，并已经验证从零全量进化、增量修复、跨 harness 适配三条路径。完整 benchmark execution 当前仍使用 GenericAgent 等外部 Agent harness；后续会上传我们自己的 Agent harness。
+Bayesian-Agent v0.5 是 native-first 的早期版本。当前 package 可用于 trace ingestion、Bayesian Skill belief update、context rendering、repair planning、result summarization，也可以由 BA 自己的 native harness 执行 benchmark task。GenericAgent、mini-swe-agent、Claude Code 继续作为可选兼容 backend，用于 cross-harness 对比和迁移。
 
 ## 📈 Star History
 
