@@ -68,6 +68,7 @@ nav:
       - Why Bayesian for Skill Evolution: articles/why-bayesian-for-skill-evolution.md
   - Method Note: method.md
   - HSTG Backend: hstg.md
+  - HSTG Experiment Guide: hstg-experiment-guide.md
   - Experiment Note: experiments.md
   - Roadmap: roadmap.md
   - Citation: citation.md
