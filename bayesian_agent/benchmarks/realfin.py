@@ -128,6 +128,7 @@ def run_realfin_bench(
     results = []
     for pos, task in enumerate(tasks, 1):
         task_id = str(task["id"])
+        task_text = realfin_task_text(task)
         workspace = out_root / BENCHMARK / task_id
         run = load_existing_adapter_run(harness, workspace)
         if run is None:
@@ -135,7 +136,7 @@ def run_realfin_bench(
             prompt = build_realfin_prompt(task, workspace)
             skill_context = ""
             if bayesian_enabled:
-                skill_context = build_benchmark_skill_context(BENCHMARK, registry)
+                skill_context = build_benchmark_skill_context(BENCHMARK, registry, task_text=task_text)
                 save_skill_evolution_snapshot(
                     out_root=out_root,
                     benchmark=BENCHMARK,
@@ -143,6 +144,7 @@ def run_realfin_bench(
                     stage="before",
                     registry=registry,
                     context=skill_context,
+                    task_text=task_text,
                 )
 
             turns = max_turns or max(3, int(task.get("timeout_seconds", 300) or 300) // 60)
@@ -169,6 +171,7 @@ def run_realfin_bench(
             "grading_type": task.get("grading_type", ""),
             "requested_output_files": requested_output_files(task),
             "output_contract": ",".join(requested_output_files(task)),
+            "task_text": task_text,
         }
         result["failure_mode"] = classify_failure(BENCHMARK, result)
         results.append(result)
@@ -188,8 +191,9 @@ def run_realfin_bench(
                 task_id=task_id,
                 stage="after",
                 registry=registry,
-                context=build_benchmark_skill_context(BENCHMARK, registry),
+                context=build_benchmark_skill_context(BENCHMARK, registry, task_text=task_text),
                 result=result,
+                task_text=task_text,
             )
         print(
             f"[realfin] {pos}/{len(tasks)} task={task_id} success={success} "
@@ -255,6 +259,16 @@ def build_realfin_cache_manifest(data_root: Path) -> Mapping[str, Any]:
         ],
     }
     return manifest
+
+
+def realfin_task_text(task: Mapping[str, Any]) -> str:
+    """Semantic task text for kernel similarity: the task's own prompt.
+
+    The harness prompt template is shared across tasks, so kernel weighting
+    keys on the task id, category, and task-specific instruction text.
+    """
+
+    return f"{task.get('id', '')} {task.get('category', '')}: {task.get('prompt', '')}".strip()
 
 
 def build_realfin_prompt(task: Mapping[str, Any], workspace: Path) -> str:

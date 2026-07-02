@@ -298,7 +298,7 @@ def agent_name_for_harness(harness: str, mode: str, evolution_algorithm: str = D
         "mini-swe-agent": "MiniSWEAgent",
     }.get(harness, harness)
     mode = mode.replace("_", "-")
-    suffix = "Frequentist" if evolution_algorithm == "frequentist" else "Bayesian"
+    suffix = {"frequentist": "Frequentist", "hstg": "HSTG"}.get(evolution_algorithm, "Bayesian")
     if mode == "bayesian-incremental":
         return f"{base}+{suffix}Incremental"
     if mode == "bayesian-full":

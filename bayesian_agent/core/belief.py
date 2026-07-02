@@ -5,10 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional
 
-from bayesian_agent.core.algorithms import DEFAULT_ALGORITHM, SUPPORTED_ALGORITHMS, is_categorical_bayes, is_frequentist, normalize_algorithm
+from bayesian_agent.core.algorithms import (
+    DEFAULT_ALGORITHM,
+    SUPPORTED_ALGORITHMS,
+    is_categorical_bayes,
+    is_frequentist,
+    is_hstg,
+    normalize_algorithm,
+)
 from bayesian_agent.core.algorithms.beta_bernoulli import BetaBernoulliState
 from bayesian_agent.core.algorithms.categorical_bayes import CategoricalBayesState
+from bayesian_agent.core.algorithms.hstg import HSTGState
 from bayesian_agent.core.evidence import TrajectoryEvidence, utc_now
+from bayesian_agent.core.similarity import SimilarityProvider
 
 
 MAX_EVIDENCE = 100
@@ -33,6 +42,7 @@ class SkillBelief:
     alpha: float = 1.0
     beta: float = 1.0
     categorical_bayes: CategoricalBayesState = field(default_factory=CategoricalBayesState)
+    hstg: HSTGState = field(default_factory=HSTGState)
     contexts: Dict[str, int] = field(default_factory=dict)
     failure_modes: Dict[str, int] = field(default_factory=dict)
     evidence: List[Dict[str, Any]] = field(default_factory=list)
@@ -51,6 +61,8 @@ class SkillBelief:
 
     @property
     def success_probability(self) -> float:
+        if is_hstg(self.algorithm):
+            return self.hstg.predict_success()
         if is_categorical_bayes(self.algorithm):
             return self.categorical_bayes.predict_success()
         if is_frequentist(self.algorithm):
@@ -62,20 +74,36 @@ class SkillBelief:
     def beta_state(self) -> BetaBernoulliState:
         return BetaBernoulliState(alpha=self.alpha, beta=self.beta)
 
-    def predict_success_probability(self, context: str = "", features: Optional[Mapping[str, Any]] = None) -> float:
+    def predict_success_probability(
+        self,
+        context: str = "",
+        features: Optional[Mapping[str, Any]] = None,
+        task_text: str = "",
+        similarity: Optional[SimilarityProvider] = None,
+    ) -> float:
+        merged = dict(features or {})
+        if context:
+            merged.setdefault("context", context)
+        if is_hstg(self.algorithm):
+            return self.hstg.predict_success(merged, task_text=task_text, provider=similarity)
         if not is_categorical_bayes(self.algorithm):
             return self.success_probability
-        merged = dict(features or {})
-        if context:
-            merged.setdefault("context", context)
         return self.categorical_bayes.predict_success(merged)
 
-    def predict_failure_probability(self, context: str = "", features: Optional[Mapping[str, Any]] = None) -> float:
-        if not is_categorical_bayes(self.algorithm):
-            return 1.0 - self.success_probability
+    def predict_failure_probability(
+        self,
+        context: str = "",
+        features: Optional[Mapping[str, Any]] = None,
+        task_text: str = "",
+        similarity: Optional[SimilarityProvider] = None,
+    ) -> float:
         merged = dict(features or {})
         if context:
             merged.setdefault("context", context)
+        if is_hstg(self.algorithm):
+            return self.hstg.predict_proba(merged, task_text=task_text, provider=similarity).get("failure", 0.0)
+        if not is_categorical_bayes(self.algorithm):
+            return 1.0 - self.success_probability
         return self.categorical_bayes.predict_proba(merged).get("failure", 0.0)
 
     def update(self, event: TrajectoryEvidence) -> "SkillBelief":
@@ -90,6 +118,8 @@ class SkillBelief:
             self.beta += 1.0
         if is_categorical_bayes(self.algorithm):
             self.categorical_bayes.update(event)
+        if is_hstg(self.algorithm):
+            self.hstg.update(event)
 
         context = event.context or "unknown"
         self.contexts[context] = self.contexts.get(context, 0) + 1
@@ -121,6 +151,7 @@ class SkillBelief:
                 "success_rate": self.success_probability,
             } if is_frequentist(self.algorithm) else {},
             "categorical_bayes": self.categorical_bayes.to_dict() if is_categorical_bayes(self.algorithm) else {},
+            "hstg": self.hstg.to_dict() if is_hstg(self.algorithm) else {},
             "contexts": self.contexts,
             "failure_modes": self.failure_modes,
             "evidence": self.evidence[-MAX_EVIDENCE:],
@@ -146,6 +177,7 @@ class SkillBelief:
             alpha=float(raw.get("alpha", default_count)),
             beta=float(raw.get("beta", default_count)),
             categorical_bayes=CategoricalBayesState.from_dict(categorical_raw),
+            hstg=HSTGState.from_dict(raw.get("hstg") or {}),
             contexts=dict(raw.get("contexts") or {}),
             failure_modes=dict(raw.get("failure_modes") or {}),
             evidence=list(raw.get("evidence") or []),
