@@ -101,6 +101,45 @@ python experiments/run_benchmarks.py \
   --evolution-algorithm hstg
 ```
 
+### Embedding Kernel
+
+The default kernel is lexical. To use a semantic embedding kernel, point
+the runner at any OpenAI-compatible `/embeddings` endpoint (DeepSeek does
+not serve embeddings; DashScope/Qwen, OpenAI, or a local server such as
+vLLM/TEI all work):
+
+```bash
+export EMBEDDING_API_KEY="sk-..."
+python experiments/run_benchmarks.py \
+  --harness bayesian-agent \
+  --model "$MODEL" \
+  --mode bayesian-full \
+  --bench realfin \
+  --evolution-algorithm hstg \
+  --similarity-backend embedding \
+  --embedding-model text-embedding-v4 \
+  --embedding-base-url https://dashscope.aliyuncs.com/compatible-mode/v1
+```
+
+Embedding vectors are cached per task text in-process, so kernel cost is
+one API call per distinct text. The same provider can be installed
+programmatically with `set_default_similarity(EmbeddingSimilarity(...))`.
+
+### Comparing Ablation Arms
+
+`experiments/compare_hstg.py` reads two or more run roots and reports
+final metrics, cold-start window accuracy, patch activation timing, the
+cumulative accuracy curve, and the `w_local` trajectory:
+
+```bash
+python experiments/compare_hstg.py \
+  --run categorical=results/hstg_ablation/categorical/bayesian_full \
+  --run hstg=results/hstg_ablation/hstg/bayesian_full \
+  --first-k 10 \
+  --out temp/hstg_compare.md \
+  --json-out temp/hstg_compare.json
+```
+
 ```python
 from bayesian_agent import BayesianSkillRegistry, TrajectoryEvidence
 

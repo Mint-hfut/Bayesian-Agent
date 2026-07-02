@@ -10,8 +10,14 @@ embedding endpoint available.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
+import ssl
+import time
+import urllib.error
+import urllib.request
 from typing import Callable, Dict, List, Sequence
 
 try:  # Python 3.8+
@@ -73,6 +79,16 @@ class EmbeddingSimilarity:
             return 0.0
         return max(0.0, min(1.0, _cosine(vec_a, vec_b)))
 
+    def warm(self, texts: Sequence[str]) -> int:
+        """Embed uncached texts in one batch call; returns how many were fetched."""
+
+        missing = [str(text) for text in dict.fromkeys(texts) if str(text or "") and str(text) not in self._cache]
+        if not missing:
+            return 0
+        for text, vector in zip(missing, self.embed(missing)):
+            self._cache[text] = [float(value) for value in vector]
+        return len(missing)
+
     def _vector(self, text: str) -> List[float]:
         if not text:
             return []
@@ -81,11 +97,91 @@ class EmbeddingSimilarity:
         return self._cache[text]
 
 
-_DEFAULT_PROVIDER = LexicalSimilarity()
+class OpenAICompatibleEmbeddingClient:
+    """Batch embedding function backed by an OpenAI-compatible /embeddings API.
+
+    Uses only the standard library so the core package stays dependency
+    free. Instances are callables suitable for ``EmbeddingSimilarity``:
+
+        provider = EmbeddingSimilarity(OpenAICompatibleEmbeddingClient(
+            model="text-embedding-v4",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key_env="EMBEDDING_API_KEY",
+        ))
+    """
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        base_url: str,
+        api_key_env: str = "EMBEDDING_API_KEY",
+        timeout_seconds: float = 30.0,
+        max_retries: int = 3,
+        verify_ssl: bool = True,
+    ):
+        self.model = str(model)
+        self.base_url = str(base_url).rstrip("/")
+        self.api_key_env = str(api_key_env)
+        self.timeout_seconds = float(timeout_seconds)
+        self.max_retries = max(1, int(max_retries))
+        self.verify_ssl = bool(verify_ssl)
+        if not self.model:
+            raise ValueError("Embedding client needs a model name.")
+        if not self.base_url:
+            raise ValueError("Embedding client needs a base URL, e.g. https://api.openai.com/v1")
+
+    def __call__(self, texts: Sequence[str]) -> List[List[float]]:
+        payload = {"model": self.model, "input": [str(text) for text in texts]}
+        raw = self._post_json(f"{self.base_url}/embeddings", payload)
+        items = sorted(raw.get("data") or [], key=lambda item: int(item.get("index", 0)))
+        vectors = [[float(value) for value in item.get("embedding") or []] for item in items]
+        if len(vectors) != len(texts):
+            raise RuntimeError(
+                f"Embedding API returned {len(vectors)} vectors for {len(texts)} inputs (model={self.model})."
+            )
+        return vectors
+
+    def _post_json(self, url: str, payload: Dict) -> Dict:
+        api_key = os.environ.get(self.api_key_env, "")
+        if not api_key:
+            raise RuntimeError(f"Embedding API key env var {self.api_key_env} is not set.")
+        body = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+        context = None if self.verify_ssl else ssl._create_unverified_context()
+        last_error: Exception = RuntimeError("embedding request not attempted")
+        for attempt in range(self.max_retries):
+            request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout_seconds, context=context) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                last_error = exc
+                if attempt + 1 < self.max_retries:
+                    time.sleep(2 ** attempt)
+        raise RuntimeError(f"Embedding API request failed after {self.max_retries} attempts: {last_error}") from last_error
+
+
+_DEFAULT_PROVIDER: SimilarityProvider = LexicalSimilarity()
 
 
 def default_similarity() -> SimilarityProvider:
     return _DEFAULT_PROVIDER
+
+
+def set_default_similarity(provider: SimilarityProvider) -> SimilarityProvider:
+    """Swap the process-wide default kernel; returns the previous provider.
+
+    HSTG belief states resolve the default provider at call time, so
+    setting an embedding-backed provider here switches every kernel
+    evaluation (prediction, patch gating, audits) without threading the
+    provider through each call site.
+    """
+
+    global _DEFAULT_PROVIDER
+    previous = _DEFAULT_PROVIDER
+    _DEFAULT_PROVIDER = provider
+    return previous
 
 
 def _jaccard(a, b) -> float:

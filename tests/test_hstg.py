@@ -4,14 +4,18 @@ import unittest
 
 from bayesian_agent import (
     BayesianSkillRegistry,
+    EmbeddingSimilarity,
     LexicalSimilarity,
     SkillBelief,
     TrajectoryEvidence,
+    default_similarity,
     normalize_algorithm,
+    set_default_similarity,
     SUPPORTED_ALGORITHMS,
 )
 from bayesian_agent.benchmarks.evolution import build_benchmark_skill_context
 from bayesian_agent.core.algorithms.hstg import HSTGState
+from bayesian_agent.core.similarity import OpenAICompatibleEmbeddingClient
 
 
 def _evidence(task_id, outcome, task_text, failure_mode="", context="sop_bench"):
@@ -186,6 +190,68 @@ class KernelPatchGatingTest(unittest.TestCase):
             )
         context = build_benchmark_skill_context("sop_bench", registry, task_text=self.FAILURE_TEXT)
         self.assertIn("left_expected_output_blank", context)
+
+
+class EmbeddingKernelTest(unittest.TestCase):
+    @staticmethod
+    def _fake_embed(texts):
+        vectors = {
+            "consecutive rising closes": [1.0, 0.0],
+            "persistent upward price movement": [0.9, 0.1],
+            "summarize a news article": [0.0, 1.0],
+        }
+        return [vectors[text] for text in texts]
+
+    def test_embedding_similarity_captures_semantic_neighbors(self):
+        provider = EmbeddingSimilarity(self._fake_embed)
+        semantic = provider.similarity("consecutive rising closes", "persistent upward price movement")
+        unrelated = provider.similarity("consecutive rising closes", "summarize a news article")
+        self.assertGreater(semantic, 0.9)
+        self.assertLess(unrelated, 0.1)
+
+    def test_warm_batches_uncached_texts_once(self):
+        calls = []
+
+        def embed(texts):
+            calls.append(list(texts))
+            return self._fake_embed(texts)
+
+        provider = EmbeddingSimilarity(embed)
+        fetched = provider.warm(["consecutive rising closes", "summarize a news article", "consecutive rising closes"])
+        self.assertEqual(fetched, 2)
+        self.assertEqual(len(calls), 1)
+        provider.similarity("consecutive rising closes", "summarize a news article")
+        self.assertEqual(len(calls), 1)
+
+    def test_set_default_similarity_swaps_kernel_for_hstg(self):
+        state = HSTGState()
+        state.update(_evidence("t0", "failure", "persistent upward price movement", failure_mode="blank_ohlcv_field_crashed_calculation"))
+        lexical_support = state.weighted_failure_support("consecutive rising closes")
+        previous = set_default_similarity(EmbeddingSimilarity(self._fake_embed))
+        try:
+            embedding_support = state.weighted_failure_support("consecutive rising closes")
+        finally:
+            set_default_similarity(previous)
+        self.assertEqual(lexical_support.get("blank_ohlcv_field_crashed_calculation", 0.0), 0.0)
+        self.assertGreater(embedding_support["blank_ohlcv_field_crashed_calculation"], 0.9)
+        self.assertIs(default_similarity(), previous)
+
+    def test_embedding_client_parses_openai_payload(self):
+        client = OpenAICompatibleEmbeddingClient(model="emb-1", base_url="https://example.test/v1")
+        client._post_json = lambda url, payload: {
+            "data": [
+                {"index": 1, "embedding": [0.0, 1.0]},
+                {"index": 0, "embedding": [1.0, 0.0]},
+            ]
+        }
+        vectors = client(["a", "b"])
+        self.assertEqual(vectors, [[1.0, 0.0], [0.0, 1.0]])
+
+    def test_embedding_client_rejects_mismatched_response(self):
+        client = OpenAICompatibleEmbeddingClient(model="emb-1", base_url="https://example.test/v1")
+        client._post_json = lambda url, payload: {"data": [{"index": 0, "embedding": [1.0]}]}
+        with self.assertRaises(RuntimeError):
+            client(["a", "b"])
 
 
 if __name__ == "__main__":

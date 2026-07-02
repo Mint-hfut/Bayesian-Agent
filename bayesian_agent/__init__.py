@@ -18,7 +18,14 @@ from bayesian_agent.core.context import SkillContextBuilder
 from bayesian_agent.core.evidence import TrajectoryEvidence
 from bayesian_agent.core.policy import RewritePolicy
 from bayesian_agent.core.registry import BayesianSkillRegistry
-from bayesian_agent.core.similarity import EmbeddingSimilarity, LexicalSimilarity, SimilarityProvider, default_similarity
+from bayesian_agent.core.similarity import (
+    EmbeddingSimilarity,
+    LexicalSimilarity,
+    OpenAICompatibleEmbeddingClient,
+    SimilarityProvider,
+    default_similarity,
+    set_default_similarity,
+)
 from bayesian_agent.harness import AgentHarness, HarnessTask, NativeBayesianAgentAdapter, ensure_harness
 from bayesian_agent.memory import CorticalMemory, HippocampusMemory, StateMemory, ThreeLayerMemory
 
@@ -39,6 +46,7 @@ __all__ = [
     "NAIVE_BAYES_ALIAS",
     "NaiveBayesState",
     "NativeBayesianAgentAdapter",
+    "OpenAICompatibleEmbeddingClient",
     "RewriteDecision",
     "RewritePolicy",
     "SimilarityProvider",
@@ -50,6 +58,7 @@ __all__ = [
     "TrajectoryEvidence",
     "default_similarity",
     "ensure_harness",
+    "set_default_similarity",
     "features_from_event",
     "normalize_algorithm",
 ]
