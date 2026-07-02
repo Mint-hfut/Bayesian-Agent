@@ -23,6 +23,7 @@ from bayesian_agent.adapters.mini_swe_agent import MiniSWEAgentAdapter
 from bayesian_agent.benchmarks.realfin import run_realfin
 from bayesian_agent.benchmarks.sop_lifelong import DEFAULT_DATA_ROOT, run_sop_lifelong
 from bayesian_agent.core.algorithms import DEFAULT_ALGORITHM, SUPPORTED_ALGORITHMS
+from bayesian_agent.core.similarity import EmbeddingSimilarity, OpenAICompatibleEmbeddingClient, set_default_similarity
 from bayesian_agent.harness import AgentHarness
 
 
@@ -136,6 +137,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ALGORITHM,
         help="Skill evolution belief backend for bayesian-full / bayesian-incremental runs.",
     )
+    parser.add_argument(
+        "--similarity-backend",
+        choices=["lexical", "embedding"],
+        default="lexical",
+        help="Kernel for the hstg evolution algorithm: stdlib lexical Jaccard (default) or an OpenAI-compatible embeddings API.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default="",
+        help="Embedding model name for --similarity-backend embedding, e.g. text-embedding-v4.",
+    )
+    parser.add_argument(
+        "--embedding-base-url",
+        default="",
+        help="OpenAI-compatible API base for embeddings, e.g. https://dashscope.aliyuncs.com/compatible-mode/v1. DeepSeek does not serve embeddings.",
+    )
+    parser.add_argument(
+        "--embedding-api-key-env",
+        default="EMBEDDING_API_KEY",
+        help="Env var holding the embeddings API key.",
+    )
+    parser.add_argument("--embedding-timeout", type=float, default=30.0)
     parser.add_argument("--dry-run", action="store_true", help="Print planned runs without calling the model.")
     return parser
 
@@ -194,6 +217,7 @@ def main(argv: Sequence[str] = None) -> int:
     args = build_parser().parse_args(argv)
     load_env_file()
     args.api_key_env = args.api_key_env or "DEEPSEEK_API_KEY"
+    configure_similarity(args)
     benchmark_runs = build_benchmark_runs(args.bench, args.model, args.out_root)
     adapter = build_adapter(args)
     native_memory_enabled = args.harness == "bayesian-agent" and bool(args.native_memory)
@@ -276,6 +300,7 @@ def print_dry_run(
         "data_root": str(Path(args.data_root).resolve()),
         "model": args.model,
         "evolution_algorithm": args.evolution_algorithm,
+        "similarity_backend": args.similarity_backend,
         "requested_bench": args.bench,
         "selected_benchmarks": [item.bench for item in benchmark_runs],
     }
@@ -290,6 +315,28 @@ def print_dry_run(
                 print("baseline_results=" + ",".join(spec.baseline_paths))
 
 
+def configure_similarity(args: argparse.Namespace) -> None:
+    """Install the requested kernel as the process-wide default provider."""
+
+    if args.similarity_backend != "embedding":
+        return
+    if args.evolution_algorithm != "hstg":
+        print("[similarity] warning: --similarity-backend embedding only affects --evolution-algorithm hstg", flush=True)
+    if not args.embedding_model or not args.embedding_base_url:
+        raise SystemExit("--similarity-backend embedding requires --embedding-model and --embedding-base-url.")
+    if not os.environ.get(args.embedding_api_key_env, ""):
+        raise SystemExit(f"--similarity-backend embedding requires the {args.embedding_api_key_env} env var.")
+    client = OpenAICompatibleEmbeddingClient(
+        model=args.embedding_model,
+        base_url=args.embedding_base_url,
+        api_key_env=args.embedding_api_key_env,
+        timeout_seconds=args.embedding_timeout,
+        verify_ssl=not args.disable_ssl_verify,
+    )
+    set_default_similarity(EmbeddingSimilarity(client))
+    print(f"[similarity] using embedding kernel model={args.embedding_model} base={args.embedding_base_url}", flush=True)
+
+
 def agent_name_for_harness(harness: str, mode: str, evolution_algorithm: str = DEFAULT_ALGORITHM) -> str:
     base = {
         "bayesian-agent": "BA",
@@ -298,7 +345,7 @@ def agent_name_for_harness(harness: str, mode: str, evolution_algorithm: str = D
         "mini-swe-agent": "MiniSWEAgent",
     }.get(harness, harness)
     mode = mode.replace("_", "-")
-    suffix = "Frequentist" if evolution_algorithm == "frequentist" else "Bayesian"
+    suffix = {"frequentist": "Frequentist", "hstg": "HSTG"}.get(evolution_algorithm, "Bayesian")
     if mode == "bayesian-incremental":
         return f"{base}+{suffix}Incremental"
     if mode == "bayesian-full":

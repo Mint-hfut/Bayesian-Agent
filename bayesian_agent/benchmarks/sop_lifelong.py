@@ -142,7 +142,8 @@ def replay_skill_evolution_artifacts(out_root: Path, results_payload: Mapping[st
             task_id = str(run.get("task_id") or "")
             if not task_id:
                 continue
-            before_context = build_benchmark_skill_context(benchmark, registry)
+            task_text = str(run.get("task_text") or "")
+            before_context = build_benchmark_skill_context(benchmark, registry, task_text=task_text)
             save_skill_evolution_snapshot(
                 out_root=out_root,
                 benchmark=benchmark,
@@ -150,6 +151,7 @@ def replay_skill_evolution_artifacts(out_root: Path, results_payload: Mapping[st
                 stage="before",
                 registry=registry,
                 context=before_context,
+                task_text=task_text,
             )
             record_benchmark_run(registry, benchmark, run)
             save_skill_evolution_snapshot(
@@ -158,8 +160,9 @@ def replay_skill_evolution_artifacts(out_root: Path, results_payload: Mapping[st
                 task_id=task_id,
                 stage="after",
                 registry=registry,
-                context=build_benchmark_skill_context(benchmark, registry),
+                context=build_benchmark_skill_context(benchmark, registry, task_text=task_text),
                 result=run,
+                task_text=task_text,
             )
     return artifacts_root
 
@@ -188,9 +191,10 @@ def run_sop_bench(
         workspace = out_root / "sop_bench" / f"task_{idx:02d}"
         setup_sop_workspace(bench_dir, workspace)
         prompt = build_sop_prompt(idx, workspace)
+        task_text = sop_task_text(idx, row)
         skill_context = ""
         if bayesian_enabled:
-            skill_context = build_benchmark_skill_context("sop_bench", registry)
+            skill_context = build_benchmark_skill_context("sop_bench", registry, task_text=task_text)
             save_skill_evolution_snapshot(
                 out_root=out_root,
                 benchmark="sop_bench",
@@ -198,6 +202,7 @@ def run_sop_bench(
                 stage="before",
                 registry=registry,
                 context=skill_context,
+                task_text=task_text,
             )
         run = harness.run_task(
             HarnessTask(
@@ -219,6 +224,7 @@ def run_sop_bench(
             "got": got,
             "success": got == expected,
             "output_contract": "csv_expected_output",
+            "task_text": task_text,
         }
         result["failure_mode"] = classify_failure("sop_bench", result)
         results.append(result)
@@ -238,8 +244,9 @@ def run_sop_bench(
                 task_id=task_id,
                 stage="after",
                 registry=registry,
-                context=build_benchmark_skill_context("sop_bench", registry),
+                context=build_benchmark_skill_context("sop_bench", registry, task_text=task_text),
                 result=result,
+                task_text=task_text,
             )
         print(f"[sop] {pos}/{len(indexed_rows)} task={idx} success={result['success']} got={got!r} expected={expected!r}", flush=True)
     return results
@@ -271,9 +278,10 @@ def run_lifelong_bench(
         workspace = out_root / "lifelong_agentbench" / f"task_{int(key):02d}"
         setup_lifelong_workspace(entry, workspace)
         prompt = build_lifelong_prompt(entry, workspace)
+        task_text = lifelong_task_text(key, entry)
         skill_context = ""
         if bayesian_enabled:
-            skill_context = build_benchmark_skill_context("lifelong_agentbench", registry)
+            skill_context = build_benchmark_skill_context("lifelong_agentbench", registry, task_text=task_text)
             save_skill_evolution_snapshot(
                 out_root=out_root,
                 benchmark="lifelong_agentbench",
@@ -281,6 +289,7 @@ def run_lifelong_bench(
                 stage="before",
                 registry=registry,
                 context=skill_context,
+                task_text=task_text,
             )
         run = harness.run_task(
             HarnessTask(
@@ -309,6 +318,7 @@ def run_lifelong_bench(
             "success": success,
             "error": error,
             "output_contract": "single_sql_statement",
+            "task_text": task_text,
         }
         result["failure_mode"] = classify_failure("lifelong_agentbench", result)
         results.append(result)
@@ -328,8 +338,9 @@ def run_lifelong_bench(
                 task_id=task_id,
                 stage="after",
                 registry=registry,
-                context=build_benchmark_skill_context("lifelong_agentbench", registry),
+                context=build_benchmark_skill_context("lifelong_agentbench", registry, task_text=task_text),
                 result=result,
+                task_text=task_text,
             )
         print(f"[lifelong] {pos}/{len(keys)} task={key} success={success} sql={got_sql!r} error={error[:120]!r}", flush=True)
     return results
@@ -369,6 +380,26 @@ def setup_lifelong_workspace(entry: Mapping[str, Any], workspace: Path) -> None:
     make_clean_dir(workspace)
     task_view = {key: value for key, value in entry.items() if key != "answer_info"}
     (workspace / "task.json").write_text(json.dumps(task_view, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def sop_task_text(row_index: int, row: Mapping[str, str]) -> str:
+    """Semantic task text for kernel similarity: the target row's own fields.
+
+    The SOP prompt template is identical across tasks, so kernel weighting
+    keys on the row content that actually differentiates each task.
+    """
+
+    parts = [f"sop_bench row {row_index}"]
+    parts.extend(
+        f"{key}={value}"
+        for key, value in row.items()
+        if key != "expected_output" and str(value or "").strip()
+    )
+    return "; ".join(parts)
+
+
+def lifelong_task_text(key: str, entry: Mapping[str, Any]) -> str:
+    return f"lifelong_agentbench task {key}: {entry.get('instruction', '')}"
 
 
 def build_sop_prompt(row_index: int, workspace: Path) -> str:

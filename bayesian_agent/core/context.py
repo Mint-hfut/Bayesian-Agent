@@ -13,8 +13,8 @@ class SkillContextBuilder:
         self.registry = registry
         self.policy = policy or RewritePolicy()
 
-    def render(self, task_context: str = "", limit: int = 5, strict_context: bool = False) -> str:
-        beliefs = self.registry.top(limit=limit, context=task_context, strict_context=strict_context)
+    def render(self, task_context: str = "", limit: int = 5, strict_context: bool = False, task_text: str = "") -> str:
+        beliefs = self.registry.top(limit=limit, context=task_context, strict_context=strict_context, task_text=task_text)
         if not beliefs:
             return ""
         frequentist = self.registry.algorithm == "frequentist"
@@ -27,7 +27,10 @@ class SkillContextBuilder:
         for belief in beliefs:
             decision = self.policy.decide(belief)
             failures = ", ".join(f"{k}={v}" for k, v in sorted(belief.failure_modes.items())[:3]) or "none"
-            context_success = belief.predict_success_probability(context=task_context) if task_context else belief.success_probability
+            if task_context or task_text:
+                context_success = belief.predict_success_probability(context=task_context, task_text=task_text)
+            else:
+                context_success = belief.success_probability
             lines.append(
                 "- "
                 f"{belief.skill_id}: algorithm={belief.algorithm}, "

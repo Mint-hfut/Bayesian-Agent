@@ -12,6 +12,9 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+MAX_TASK_TEXT = 1500
+
+
 @dataclass
 class TrajectoryEvidence:
     """Action-verified evidence emitted by an agent run."""
@@ -27,10 +30,12 @@ class TrajectoryEvidence:
     elapsed_seconds: float = 0.0
     failure_mode: str = ""
     summary: str = ""
+    task_text: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now)
 
     def __post_init__(self) -> None:
+        self.task_text = str(self.task_text or "")[:MAX_TASK_TEXT]
         if not self.total_tokens:
             self.total_tokens = int(self.input_tokens or 0) + int(self.output_tokens or 0)
         self.input_tokens = int(self.input_tokens or 0)
@@ -56,6 +61,7 @@ class TrajectoryEvidence:
             "elapsed_seconds": self.elapsed_seconds,
             "failure_mode": self.failure_mode,
             "summary": self.summary,
+            "task_text": self.task_text,
             "metadata": _json_safe(self.metadata),
             "created_at": self.created_at,
         }
@@ -74,6 +80,7 @@ class TrajectoryEvidence:
             elapsed_seconds=float(raw.get("elapsed_seconds") or 0.0),
             failure_mode=str(raw.get("failure_mode") or raw.get("error") or ""),
             summary=str(raw.get("summary") or ""),
+            task_text=str(raw.get("task_text") or ""),
             metadata=_json_safe(dict(raw.get("metadata") or {})),
             created_at=str(raw.get("created_at") or utc_now()),
         )
@@ -99,7 +106,8 @@ class TrajectoryEvidence:
             elapsed_seconds=float(run.get("elapsed_seconds") or 0.0),
             failure_mode=str(failure_mode if failure_mode is not None else run.get("failure_mode") or run.get("error") or ""),
             summary=str(run.get("summary") or run.get("task_id") or ""),
-            metadata=_json_safe({k: v for k, v in run.items() if k not in {"transcript", "usage_events"}}),
+            task_text=str(run.get("task_text") or ""),
+            metadata=_json_safe({k: v for k, v in run.items() if k not in {"transcript", "usage_events", "task_text"}}),
         )
 
 

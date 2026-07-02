@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from bayesian_agent.core.algorithms import is_hstg
 from bayesian_agent.core.context import SkillContextBuilder
 from bayesian_agent.core.evidence import TrajectoryEvidence
 from bayesian_agent.core.policy import RewritePolicy
@@ -13,6 +14,13 @@ from bayesian_agent.core.registry import BayesianSkillRegistry
 
 
 ACTIVE_PATCH_MIN_SUPPORT = 2
+# HSTG kernel gating: a patch activates when the kernel-weighted failure
+# mass near the current task reaches this threshold (one near-identical
+# failure suffices), or when the mode already meets the global count
+# threshold and retains at least minimal semantic relevance. The relevance
+# floor is what suppresses patches for semantically unrelated tasks.
+ACTIVE_PATCH_MIN_WEIGHTED_SUPPORT = 1.0
+ACTIVE_PATCH_MIN_RELEVANCE = 0.1
 
 
 def classify_failure(benchmark: str, run: Mapping[str, Any]) -> str:
@@ -78,17 +86,22 @@ def seed_registry_from_results(registry: BayesianSkillRegistry, benchmark_runs: 
             record_benchmark_run(registry, benchmark, run)
 
 
-def build_benchmark_posterior_context(benchmark: str, registry: BayesianSkillRegistry) -> str:
+def build_benchmark_posterior_context(benchmark: str, registry: BayesianSkillRegistry, task_text: str = "") -> str:
     """Render posterior belief state for artifact inspection, not model input."""
 
-    return SkillContextBuilder(registry).render(task_context=benchmark, limit=5, strict_context=True)
+    return SkillContextBuilder(registry).render(task_context=benchmark, limit=5, strict_context=True, task_text=task_text)
 
 
-def build_benchmark_skill_context(benchmark: str, registry: BayesianSkillRegistry) -> str:
-    """Render model-facing failure patches plus benchmark-specific guardrails."""
+def build_benchmark_skill_context(benchmark: str, registry: BayesianSkillRegistry, task_text: str = "") -> str:
+    """Render model-facing failure patches plus benchmark-specific guardrails.
+
+    With the HSTG backend and a non-empty ``task_text``, patch activation is
+    gated by kernel-weighted failure support in the current task's semantic
+    neighborhood instead of the global failure count.
+    """
 
     rules = _stable_rules(benchmark)
-    patches = _failure_mode_patch_rules(benchmark, registry)
+    patches = _failure_mode_patch_rules(benchmark, registry, task_text=task_text)
     if not rules and not patches:
         return ""
     method = "Frequentist" if registry.algorithm == "frequentist" else "Bayesian"
@@ -96,7 +109,7 @@ def build_benchmark_skill_context(benchmark: str, registry: BayesianSkillRegistr
     if patches:
         lines.append(f"### {method} Failure-Mode Patches: {benchmark}")
         for failure_mode, count, patch_rules in patches:
-            lines.append(f"- failure_mode={failure_mode} observed={count}")
+            lines.append(f"- failure_mode={failure_mode} observed={_format_support(count)}")
             lines.extend(f"  - {rule}" for rule in patch_rules)
     if rules:
         lines.extend(["", f"### Benchmark SOP Guardrails: {benchmark}"])
@@ -113,6 +126,7 @@ def save_skill_evolution_snapshot(
     registry: BayesianSkillRegistry,
     context: str,
     result: Mapping[str, Any] = None,
+    task_text: str = "",
 ) -> Mapping[str, Any]:
     """Persist per-task Skill evolution context and belief snapshots."""
 
@@ -127,9 +141,9 @@ def save_skill_evolution_snapshot(
     belief_path = task_dir / f"belief_{stage}.json"
     snapshot_path = task_dir / f"snapshot_{stage}.json"
     context_path.write_text(context or "", encoding="utf-8")
-    posterior_context_path.write_text(build_benchmark_posterior_context(benchmark, registry), encoding="utf-8")
+    posterior_context_path.write_text(build_benchmark_posterior_context(benchmark, registry, task_text=task_text), encoding="utf-8")
 
-    state = _benchmark_skill_state(benchmark, registry)
+    state = _benchmark_skill_state(benchmark, registry, task_text=task_text)
     _write_json(belief_path, state)
 
     payload = {
@@ -186,14 +200,25 @@ def _stable_rules(benchmark: str):
     return []
 
 
-def _failure_mode_patch_rules(benchmark: str, registry: BayesianSkillRegistry):
+def _failure_mode_patch_rules(benchmark: str, registry: BayesianSkillRegistry, task_text: str = ""):
+    use_kernel_gate = is_hstg(registry.algorithm) and bool(task_text)
     counts = {}
     for belief in registry.beliefs():
         if belief.skill_id != f"benchmark/{benchmark}" and benchmark not in belief.contexts:
             continue
-        for failure_mode, count in belief.failure_modes.items():
-            if count >= ACTIVE_PATCH_MIN_SUPPORT:
-                counts[failure_mode] = counts.get(failure_mode, 0) + int(count)
+        if use_kernel_gate:
+            support = belief.hstg.weighted_failure_support(task_text)
+            for failure_mode, raw_count in belief.failure_modes.items():
+                weight = float(support.get(failure_mode, 0.0))
+                activated = weight >= ACTIVE_PATCH_MIN_WEIGHTED_SUPPORT or (
+                    raw_count >= ACTIVE_PATCH_MIN_SUPPORT and weight >= ACTIVE_PATCH_MIN_RELEVANCE
+                )
+                if activated:
+                    counts[failure_mode] = counts.get(failure_mode, 0.0) + weight
+        else:
+            for failure_mode, count in belief.failure_modes.items():
+                if count >= ACTIVE_PATCH_MIN_SUPPORT:
+                    counts[failure_mode] = counts.get(failure_mode, 0) + int(count)
 
     patches = []
     mode_rules = _patch_rule_catalog(benchmark)
@@ -202,6 +227,12 @@ def _failure_mode_patch_rules(benchmark: str, registry: BayesianSkillRegistry):
         if rules:
             patches.append((failure_mode, count, rules))
     return patches
+
+
+def _format_support(count) -> str:
+    if isinstance(count, float) and not count.is_integer():
+        return f"{count:.2f}"
+    return str(int(count))
 
 
 def _patch_rule_catalog(benchmark: str):
@@ -302,17 +333,20 @@ def _realfin_analysis_trace_score_keys(scores: Mapping[str, Any]):
     ]
 
 
-def _benchmark_skill_state(benchmark: str, registry: BayesianSkillRegistry):
+def _benchmark_skill_state(benchmark: str, registry: BayesianSkillRegistry, task_text: str = ""):
     skill_id = f"benchmark/{benchmark}"
     known = skill_id in registry.data.get("skills", {})
     belief = registry.get(skill_id)
     decision = RewritePolicy().decide(belief)
-    return {
+    state = {
         "skill_id": skill_id,
         "known": known,
         "belief": belief.to_dict(),
         "rewrite_decision": decision.to_dict(),
     }
+    if is_hstg(registry.algorithm) and task_text:
+        state["hstg_audit"] = belief.hstg.audit(task_text)
+    return state
 
 
 def _compact_result(result: Mapping[str, Any]):

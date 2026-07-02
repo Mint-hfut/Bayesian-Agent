@@ -3,10 +3,12 @@
 from bayesian_agent.core.algorithms import (
     CATEGORICAL_BAYES,
     DEFAULT_ALGORITHM,
+    HSTG,
     NAIVE_BAYES_ALIAS,
     SUPPORTED_ALGORITHMS,
     BetaBernoulliState,
     CategoricalBayesState,
+    HSTGState,
     NaiveBayesState,
     features_from_event,
     normalize_algorithm,
@@ -16,6 +18,14 @@ from bayesian_agent.core.context import SkillContextBuilder
 from bayesian_agent.core.evidence import TrajectoryEvidence
 from bayesian_agent.core.policy import RewritePolicy
 from bayesian_agent.core.registry import BayesianSkillRegistry
+from bayesian_agent.core.similarity import (
+    EmbeddingSimilarity,
+    LexicalSimilarity,
+    OpenAICompatibleEmbeddingClient,
+    SimilarityProvider,
+    default_similarity,
+    set_default_similarity,
+)
 from bayesian_agent.harness import AgentHarness, HarnessTask, NativeBayesianAgentAdapter, ensure_harness
 from bayesian_agent.memory import CorticalMemory, HippocampusMemory, StateMemory, ThreeLayerMemory
 
@@ -27,20 +37,28 @@ __all__ = [
     "CorticalMemory",
     "CategoricalBayesState",
     "DEFAULT_ALGORITHM",
+    "EmbeddingSimilarity",
+    "HSTG",
+    "HSTGState",
     "HarnessTask",
     "HippocampusMemory",
+    "LexicalSimilarity",
     "NAIVE_BAYES_ALIAS",
     "NaiveBayesState",
     "NativeBayesianAgentAdapter",
+    "OpenAICompatibleEmbeddingClient",
     "RewriteDecision",
     "RewritePolicy",
+    "SimilarityProvider",
     "SkillBelief",
     "SkillContextBuilder",
     "StateMemory",
     "SUPPORTED_ALGORITHMS",
     "ThreeLayerMemory",
     "TrajectoryEvidence",
+    "default_similarity",
     "ensure_harness",
+    "set_default_similarity",
     "features_from_event",
     "normalize_algorithm",
 ]
